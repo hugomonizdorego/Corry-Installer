@@ -93,9 +93,9 @@ WelcomePage::WelcomePage( Config* config, QWidget* parent )
         introduction->setObjectName( "corryHint" );
         ui->verticalLayout->insertWidget( ui->verticalLayout->indexOf( ui->mainText ) + 1, introduction );
         CALAMARES_RETRANSLATE( introduction->setText(
-            tr( "Choose your preferences, prepare your disk, then review and install. "
-                "Btrfs is the default filesystem. Additional software is optional. "
-                "Disk changes only begin after your confirmation." ) ); );
+            tr( "Choose your language, location and keyboard, prepare a disk and create your account. "
+                "Everything is installed from this computer's installation media; no internet connection is needed. "
+                "Nothing on your disks changes until you confirm the final review." ) ); );
     }
 
     CALAMARES_RETRANSLATE_SLOT( &WelcomePage::retranslate );
@@ -233,7 +233,7 @@ WelcomePage::retranslate()
     const QString message = m_conf->genericWelcomeMessage();
 
     ui->mainText->setText( Calamares::Branding::instance()->componentName() == QStringLiteral( "corry" )
-        ? tr( "A fresh start.\nAt your pace.\n%1" ).arg( Calamares::Branding::instance()->shortProductName() )
+        ? tr( "Welcome to\n%1" ).arg( Calamares::Branding::instance()->shortProductName() )
         : message.arg( Calamares::Branding::instance()->versionedName() ) );
     ui->retranslateUi( this );
     ui->supportButton->setText(

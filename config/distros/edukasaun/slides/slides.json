@@ -1,17 +1,17 @@
 [
   {
     "image": "welcome.svg",
-    "title": "Selamat datang di Edukasaun OS",
-    "description": "Ruang baru untuk belajar dan berkarya."
+    "title": "Welcome to Edukasaun OS",
+    "description": "A calm place to learn, create and share."
   },
   {
     "image": "work.svg",
-    "title": "Belajar. Buat. Bagikan.",
-    "description": "Aplikasi pilihan Anda sedang disiapkan."
+    "title": "Built on Debian",
+    "description": "Stable, secure and free software from Debian stable or Debian testing."
   },
   {
     "image": "control.svg",
-    "title": "Siap untuk langkah berikutnya",
-    "description": "Simpan komputer tetap terhubung ke sumber listrik."
+    "title": "Almost there",
+    "description": "Keep the computer plugged in. Corry will tell you when the installation is complete."
   }
 ]

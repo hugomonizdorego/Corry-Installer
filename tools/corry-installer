@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
+# Corry speaks US English by default. Another language can still be chosen on
+# the welcome page, or set CORRY_LANG before starting the installer.
+language=${CORRY_LANG:-en_US.UTF-8}
+export LANG=$language LANGUAGE=${language%%.*}
+unset LC_ALL LC_MESSAGES
 if ! details=$(/usr/bin/python3 /usr/lib/corry/preflight.py 2>&1); then
  printf '%s\n' "$details" >&2
  # Show failures from the desktop too, without a terminal requirement.

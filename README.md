@@ -1,87 +1,118 @@
 <!-- SPDX-License-Identifier: CC0-1.0 -->
 # Corry Installer
 
-Corry is an early development fork of **Calamares 3.3.15** for **Edukasaun OS** and
-**DebION GNU/Linux**, with a shared installation engine and separate product assets.
+> **Status: in development.** Corry has not yet been validated by full ISO
+> installations on real hardware. Do not use it on a computer with data you
+> cannot afford to lose.
 
-![DebION design preview](docs/screenshots/debion-welcome.png)
+Corry is the default system installer for **Edukasaun OS** and
+**DebION GNU/Linux**. It is a fork of **Calamares 3.3.15** with one shared
+installation engine and separate product assets for each distribution. Both
+distributions are built on **Debian stable (13 "trixie")** and **Debian testing**;
+Corry supports exactly those two bases.
 
-The screenshots are **Qt design previews with sample data**. They share production
-QML, styles and artwork. Page bodies are a storyboard, not exact captures of every
-native page or evidence of a successful ISO installation.
+![Edukasaun OS welcome page](docs/screenshots/edukasaun-welcome.png)
 
-## This revision
+| | |
+| --- | --- |
+| ![DebION partitions](docs/screenshots/debion-partitions.png) | ![DebION install slideshow](docs/screenshots/debion-install.png) |
+| ![Edukasaun OS account](docs/screenshots/edukasaun-users.png) | ![Edukasaun OS summary](docs/screenshots/edukasaun-summary.png) |
 
-- Horizontal step menu, wider workspace and a two-column native welcome page.
-- Language → location → keyboard → software → partitions → account → review → install.
-- Separate names, palettes, artwork, slideshow manifests and software catalogs for both OSes.
-- Local image slideshow with automatic advance, pause, previous and next controls.
-- Signed repository check, retry button and optional software selected with ordinary clicks.
-- Dependencies resolved against the **installation image's** package status. All required
-  downloads complete **before partitioning**; target package installation uses `--no-download`.
-- Offline base installation when the image already contains required packages and its kernel.
-- Btrfs default; ext4/XFS alternatives; manual Root/Home/EFI/Boot/Swap/Var/Tmp shortcuts.
-- Passwords accept one character or more; empty or mismatched passwords are rejected.
-- Explicit disk-operation confirmation and Debian 12/Qt5 + Debian 13/Qt6 CI builds.
+The screenshots are **Qt design previews with sample data** made by
+`tools/preview.py`. They use the production header and slideshow QML, stylesheet
+and artwork, but the page bodies are a storyboard, not captures of a real
+installation.
 
-The configuration is a maintained in-repository fork of
-[CatalystDevOrg/calamares-settings-debian](https://github.com/CatalystDevOrg/calamares-settings-debian).
-The imported source, ISC license and pinned revision are in `config/upstream/catalyst`.
-Linux Mint Live Installer informs the guided workflow and slideshow behavior; its
-Python engine and artwork are not copied. See [source provenance](config/upstream/catalyst/UPSTREAM.md).
+## What Corry does
+
+- Welcome → Location → Keyboard → Partitions → Users → Summary → Install → Finish.
+- A redesigned header with the product name and a step-by-step progress bar,
+  a two-column welcome page with the system check, and a slideshow with
+  pause, previous and next controls while installing.
+- **Fully offline.** Everything is copied from the live image; there is no
+  software selection page, no package download and no internet requirement.
+- Btrfs by default (subvolumes `@`, `@home`, `@cache`, `@log`), with ext4 and XFS
+  as alternatives, and Root/Home/EFI/Boot/Swap/Var/Tmp role shortcuts for
+  manual partitioning.
+- Passwords of one character or more; empty or mismatched passwords are rejected.
+- Before anything starts, the launcher checks the host tools **and the contents of
+  the live image** (kernel, initramfs-tools, GRUB files for this computer's
+  firmware). A broken image is reported before any disk is touched.
+- After unpacking, Corry removes the live-session packages and the installer's own
+  launchers from the new system, installs `grub-pc` or `grub-efi-<arch>` from the
+  boot medium's package pool (falling back to the GRUB files already in the image),
+  enables os-prober for dual boot, then builds the initramfs and installs GRUB.
+- US English (`en_US.UTF-8`) is the default language. Other languages can still be
+  chosen on the welcome page.
 
 ## Build and integrate
 
-Run inside a disposable Debian development machine or ISO-build chroot:
+Run inside a disposable Debian stable or testing machine, or in the ISO build chroot:
 
 ```bash
 sudo bash tools/install-dependencies.sh build
 bash tools/build-corry.sh
 python3 tools/test-profile.py
-python3 tools/test-software.py
 QT_QPA_PLATFORM=offscreen ctest --test-dir build-corry \
-  -R '^(userstest|partitionconfigtest|corrypartitiontest|packagechoosertest)$' --output-on-failure
+  -R '^(userstest|partitionconfigtest|corrypartitiontest)$' --output-on-failure
 sudo cmake --install build-corry
 sudo bash tools/install-profile.sh --distro edukasaun
-# Or, for a different ISO build root:
+# Or, for the other distribution's ISO build root:
 # sudo bash tools/install-profile.sh --distro debion
 ```
 
-CI also uploads development archives for both distro profiles and Debian versions,
-with SHA256 checksums. These are staged file trees for ISO-build testing, not signed
-Debian packages or tested release ISOs. They require the matching Debian runtime
-dependencies. Download them from the successful workflow run; artifacts are retained
-for 14 days.
+The scripts detect the Debian base from `/etc/debian_version` (`13.x` is stable,
+`forky/sid` or `14.x` is testing). If a derivative changes that file, set
+`CORRY_DEBIAN_BASE=stable` or `CORRY_DEBIAN_BASE=testing`. Both bases use Qt 6.
+Set `CORRY_BUILD_JOBS` to tune parallelism.
 
-The existing `calamares` executable/API paths are retained. Installing under `/usr`
-replaces files supplied by Debian's backend package; dedicated Debian packaging is
-future work. Include the built Corry backend and selected profile in the live ISO,
-and use `corry-installer.desktop` as its installer launcher.
+### Corry as the default installer
 
-For derivatives, set `CORRY_DEBIAN_VERSION=12` or `13` to their actual Debian base
-when running the dependency and build scripts. Set `CORRY_BUILD_JOBS` to tune parallelism.
+`install-profile.sh` makes Corry the live session's installer:
+
+| File | Purpose |
+| --- | --- |
+| `/usr/bin/corry-installer` | Launcher: preflight checks, then Calamares with the Corry profile |
+| `/usr/share/applications/corry-installer.desktop` | "Install Edukasaun OS" / "Install DebION GNU/Linux" menu entry |
+| `/etc/skel/Desktop/corry-installer.desktop` | Desktop icon for the live user |
+| `/usr/local/share/applications/{calamares,install-debian}.desktop` | Hide Debian's generic installer entries |
+| `/usr/local/bin/install-debian` | Redirect Debian's `install-debian` command to Corry |
+| `/etc/xdg/autostart/corry-installer.desktop` | Only with `--autostart`: open Corry when the live session starts |
+
+Nothing owned by a Debian package is overwritten. Do not add
+`calamares-settings-debian` to the image; it ships a competing `/etc/calamares`.
+All of these launchers are removed from the installed system by the
+`corrycleanup` job.
+
 The default image is `/run/live/medium/live/filesystem.squashfs`; override it with
-`--image /absolute/path.squashfs`. `DESTDIR` supports staging both profiles independently.
+`--image /absolute/path.squashfs`. The boot medium (two levels above the image)
+is used for the GRUB package pool. `DESTDIR` stages a profile without changing
+the host.
 
-Include runtime dependencies **before packing** the squashfs. The payload must
-contain a Debian kernel, firmware, desktop, login manager and correct signed APT
-sources/keyrings. Corry does not manufacture or validate a complete distro ISO.
+The live image must already contain everything the installed system needs:
+a Debian kernel, firmware, desktop, login manager, initramfs-tools, `grub2-common`,
+and `grub-pc-bin`/`grub-efi-amd64-bin` (or the full `grub-pc`/`grub-efi-amd64`
+packages in the ISO's package pool). Include Corry's runtime dependencies
+(`tools/install-dependencies.sh runtime`) **before packing** the squashfs.
 Read the [integration and testing guide](docs/CORRY-DEVELOPMENT.md).
 
-## Edit a distro without changing the engine
+CI builds Corry on `debian:stable` and `debian:testing` and uploads development
+archives for both distributions with SHA256 checksums. They are staged file trees
+for ISO-build testing, not signed Debian packages or tested release ISOs.
+
+## Edit a distribution without changing the engine
 
 Edit only `config/distros/edukasaun/` or `config/distros/debion/`:
 
-- `branding.desc`: displayed product names and links.
-- `profile.yaml`: accent colors.
-- `slides/slides.json`: image order, titles and descriptions. Images can be SVG, PNG or JPEG.
-- `slides/`: original local artwork or your own distro images.
-- `software.yaml`: mandatory packages and optional package groups.
+- `branding.desc`: product names and links.
+- `profile.yaml`: product name, accent and tint colors.
+- `slides/slides.json`: slideshow order, titles and descriptions (images can be SVG, PNG or JPEG).
+- `slides/`: the slideshow images.
 
-Re-run `install-profile.sh --distro …` after editing. It generates the package chooser
-and slideshow JavaScript from these manifests, keeping frontend/backend choices aligned.
+Re-run `install-profile.sh --distro …` after editing. It applies the colors to the
+stylesheet, header, slideshow and logo, and generates the slideshow JavaScript.
 
-## Safe preview
+## Safe preview and screenshots
 
 ```bash
 pip install PySide6 PyYAML
@@ -89,13 +120,15 @@ python3 tools/preview.py --distro edukasaun
 QT_QPA_PLATFORM=offscreen python3 tools/preview.py --distro debion --screenshots docs/screenshots
 ```
 
-The preview cannot install or access disks. Its repository status is explicitly simulated.
-The signed APT integration test uses temporary package roots in CI, not physical disks.
-A full ISO install and reboot in BIOS/UEFI VMs is still required before release.
+The preview cannot install anything or access disks. A full ISO installation and
+reboot in BIOS and UEFI virtual machines is still required before a release.
 
 ## Licensing
 
 Upstream per-file licenses and notices are retained; see `LICENSES/`. New Corry code
-uses GPL-3.0-or-later unless marked otherwise; original artwork is CC0-1.0. The imported
-Catalyst configuration retains its ISC notice. No Microsoft, Mint or Catalyst artwork
-is shipped. Calamares upstream: https://codeberg.org/Calamares/calamares
+uses GPL-3.0-or-later unless marked otherwise; original artwork is CC0-1.0. The
+configuration is derived from
+[CatalystDevOrg/calamares-settings-debian](https://github.com/CatalystDevOrg/calamares-settings-debian),
+kept in `config/upstream/catalyst` with its ISC notice
+([source provenance](config/upstream/catalyst/UPSTREAM.md)). No Microsoft, Mint or
+Catalyst artwork is shipped. Calamares upstream: https://codeberg.org/Calamares/calamares

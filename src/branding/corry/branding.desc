@@ -26,10 +26,10 @@ images:
   productLogo: corry-mark.svg
   productWelcome: slides/welcome.svg
 style:
-  SidebarBackground: '#142c3d'
-  SidebarText: '#bdd0dc'
-  SidebarTextCurrent: '#ffffff'
-  SidebarBackgroundCurrent: '#29495b'
+  SidebarBackground: '#ffffff'
+  SidebarText: '#6b7280'
+  SidebarTextCurrent: '#6445a4'
+  SidebarBackgroundCurrent: '#f0ecf8'
 slideshow: show.qml
 slideshowAPI: 2
 uploadServer:

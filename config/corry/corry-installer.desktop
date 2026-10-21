@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: CC0-1.0
 [Desktop Entry]
 Type=Application
-Name=Corry Installer
-Name[id]=Pemasang Corry
-Comment=Install your system one step at a time
+Name=Install System
+GenericName=System Installer
+Comment=Install the system on this computer, one step at a time
 Exec=corry-installer
 Icon=/etc/calamares/branding/corry/corry-mark.svg
 Terminal=false
 Categories=System;
+Keywords=install;installer;setup;calamares;corry;
 StartupNotify=true

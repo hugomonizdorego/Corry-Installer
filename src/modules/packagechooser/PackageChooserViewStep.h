@@ -50,7 +50,6 @@ private:
 
     Config* m_config;
     PackageChooserPage* m_widget;
-    bool m_corryRepositories = false;
 };
 
 CALAMARES_PLUGIN_FACTORY_DECLARATION( PackageChooserViewStepFactory )

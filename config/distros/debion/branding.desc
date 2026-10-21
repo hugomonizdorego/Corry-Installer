@@ -26,7 +26,7 @@ images:
   productWelcome: slides/welcome.svg
 style:
   SidebarBackground: '#ffffff'
-  SidebarText: '#74717c'
+  SidebarText: '#6b7280'
   SidebarTextCurrent: '#6445a4'
   SidebarBackgroundCurrent: '#f0ecf8'
 slideshow: show.qml

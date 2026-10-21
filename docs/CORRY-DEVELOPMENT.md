@@ -1,132 +1,153 @@
 <!-- SPDX-License-Identifier: CC0-1.0 -->
-# Corry — integrasi Edukasaun OS dan DebION
+# Corry — integrating with Edukasaun OS and DebION GNU/Linux
 
-Ini adalah pengembangan awal Calamares 3.3.15. Mesin pemasangan tetap Calamares;
-konfigurasi Debian diadaptasi dari Catalyst dan alur/slideshow mengacu pada fitur
-Linux Mint Live Installer. Snapshot konfigurasi Catalyst beserta lisensi ISC disimpan
-di `config/upstream/catalyst`. Fork konfigurasi dipelihara di dalam repositori Corry,
-bukan fork GitHub terpisah. Logo/gambar dari kedua proyek referensi tidak disalin.
+Corry is in development. It is an early fork of Calamares 3.3.15: the
+installation engine is Calamares, the Debian configuration is adapted from
+Catalyst, and the guided flow and slideshow take inspiration from the Linux Mint
+Live Installer. The Catalyst configuration snapshot and its ISC license are kept
+in `config/upstream/catalyst`. No logos or images from the reference projects are
+copied.
 
-## Dua distro, satu mesin
+## Supported bases
 
-Build dan install backend Corry, lalu pilih tepat satu profil untuk setiap root ISO:
+| Base | Detected from `/etc/debian_version` | Qt |
+| --- | --- | --- |
+| Debian stable (13 "trixie") | `13`, `13.x` | 6 |
+| Debian testing | `14`, `14.x`, `forky/sid`, `…/sid` | 6 |
+
+Any other base is refused. A derivative that rewrites `/etc/debian_version`
+sets `CORRY_DEBIAN_BASE=stable` or `CORRY_DEBIAN_BASE=testing` when running
+`install-dependencies.sh` and `build-corry.sh`. Debian 12 and Qt 5 are no
+longer supported.
+
+## Two distributions, one engine
+
+Build and install the Corry backend, then install exactly one profile into each
+ISO root:
 
 ```bash
 sudo bash tools/install-profile.sh --distro edukasaun
 sudo bash tools/install-profile.sh --distro debion --image /run/live/medium/live/custom.squashfs
-# Staging tanpa mengubah host:
+# Open the installer automatically when the live session starts:
+sudo bash tools/install-profile.sh --distro edukasaun --autostart
+# Stage without changing the host:
 DESTDIR=/tmp/edukasaun-root bash tools/install-profile.sh --distro edukasaun
 ```
 
-Nama/logo/slide tidak ditanam dalam kode instalasi. `config/distros/<id>/branding.desc`
-berisi nama produk; `profile.yaml` berisi warna; `slides/slides.json` memuat urutan,
-judul, deskripsi dan nama file gambar lokal. SVG/PNG/JPEG dapat dipakai. Script profil
-memvalidasi gambar dan menghasilkan `Slides.js` untuk Qt5/Qt6 tanpa akses web.
-Ganti isi folder tiap distro lalu jalankan pemasangan profil lagi. Engine/QML bersama
-berada di `src/branding/corry`; tidak perlu menduplikasi kode mesin untuk mengganti OS.
+Names, logos and slides are not compiled into the engine.
+`config/distros/<id>/branding.desc` holds the product names; `profile.yaml` the
+colors; `slides/slides.json` the slide order, titles, descriptions and local image
+files. The profile script validates the images, generates `Slides.js`, and
+applies the accent and tint colors to the stylesheet, header, slideshow and logo.
+The shared QML and stylesheet live in `src/branding/corry`.
 
-Pakai desktop entry `corry-installer.desktop` sebagai launcher installer bawaan dalam
-konfigurasi desktop/live-build distro. Profil tidak membangun ISO dan tidak mengubah
-sistem host menjadi Edukasaun atau DebION. Integrator tetap menyiapkan `/etc/os-release`,
-kernel, firmware, desktop, login manager serta repository dan keyring distro di payload.
+The profile does not build an ISO and does not turn the host into Edukasaun OS
+or DebION. The ISO integrator still provides `/etc/os-release`, the kernel,
+firmware, desktop, login manager, and the distribution's repositories and
+keyrings in the image.
 
-Untuk turunan Debian dengan nomor versi produk sendiri, jalankan kedua script build
-menggunakan `CORRY_DEBIAN_VERSION=12` atau `13`, sesuai basis Debian yang sebenarnya.
-Dependensi runtime harus dimasukkan sebelum squashfs dikemas. Build source memasang
-ke path paket `calamares` Debian; gunakan chroot/mesin pengembangan terpisah sampai
-paket Debian Corry khusus tersedia.
+## Default installer
 
-## Alur pemasangan dan paket
+`install-profile.sh` installs the `corry-installer` launcher, an
+"Install <product>" menu entry and a desktop icon for the live user
+(`/etc/skel/Desktop`). It hides Debian's generic `calamares` and
+`install-debian` menu entries through `/usr/local/share/applications` and
+redirects the `install-debian` command through `/usr/local/bin`, so every
+"Install" entry point in the live session opens Corry. Packages are never
+modified. `--autostart` adds an XDG autostart entry as well.
 
-Menu langkah berada di atas. Halaman aplikasi mempunyai pemeriksaan repositori dan
-tombol coba ulang. Pilihan aplikasi memakai klik biasa untuk memilih/membatalkan.
-Tidak ada paket tambahan dipilih otomatis. Paket dapat diubah di `software.yaml`;
-chooser dan backend memakai katalog yang sama.
+The launcher sets `LANG=en_US.UTF-8` so the installer starts in US English. Set
+`CORRY_LANG` to start in another language, or choose one on the welcome page.
 
-1. Launcher memeriksa alat filesystem, GRUB/initramfs dan keberadaan image.
-2. Halaman aplikasi memeriksa akses repositori sesi live menggunakan APT dalam folder
-   sementara. Status ini mencakup koneksi, metadata dan tanda tangan repositori;
-   tidak bergantung pada ping atau layanan pengecekan internet pihak ketiga.
-3. Setelah konfirmasi akhir, job `corryprepare` berjalan **sebelum job partisi**.
-   Ia membaca status dpkg dari squashfs dan memastikan kernel tercatat terpasang.
-   Dependensi dihitung dari status image tersebut, bukan dari paket sesi live.
-4. Jika paket wajib sudah ada dan tidak ada tambahan yang dipilih, tidak diperlukan
-   akses jaringan. Jika ada paket yang kurang, konfigurasi APT/keyring diambil dari
-   image, metadata diverifikasi, dependency disimulasikan, lalu seluruh unduhan diselesaikan.
-   Repo tidak dapat diakses, paket tidak tersedia, signature gagal, atau ruang unduhan
-   habis menghentikan proses pada tahap ini sebelum perubahan disk dimulai.
-   Paket tambahan pada iterasi awal memakai mirror HTTP/HTTPS bertanda tangan;
-   sumber media `file:` yang tidak membuat cache unduhan dihentikan sebelum partisi.
-5. Setelah unpack, `corrypackages` memeriksa hash cache, memasang dengan
-   `--no-download --no-remove`, menjalankan `apt-get check` dan memeriksa status paket
-   yang diminta. Kegagalan tidak dilewati. Cache dibersihkan setelah sukses.
-6. Cleanup live → initramfs → konfigurasi GRUB → pemasangan bootloader → umount.
-   Slideshow lokal berjalan selama fase eksekusi; dapat dijeda dan dipindah manual.
+The installed system is unpacked from the same image. `corrycleanup` therefore
+removes the launcher files, the desktop icon copied into the new user's home,
+the autostart entry and the redirects from the target. Extra live-only files can
+be listed in `corrycleanup.conf` as `removeFiles`.
 
-APT berjalan dengan status/lists/cache terpisah dan hook apt.conf sesi live dimatikan.
-Konfigurasi sumber tidak ditulis ulang ke mirror pihak ketiga. Sumber `trusted=yes`
-atau `allow-insecure=yes` ditolak untuk unduhan tambahan. Repository distro dalam
-image harus cocok dengan basis paket image. Pengunduhan besar membutuhkan ruang
-pada penyimpanan sementara sesi live. Pemeriksaan tidak menjamin perangkat keras,
-bootloader, listrik atau media penyimpanan tidak akan gagal.
+## Installation flow
 
-## Partisi dan akun
+1. The launcher runs `preflight.py`: filesystem tools, GRUB, initramfs-tools and
+   the live image must exist. It then lists the image with `unsquashfs` and
+   checks for a kernel (`boot/vmlinuz-*`), `update-initramfs`, `grub-install` and
+   the GRUB platform files for this computer (`x86_64-efi` on UEFI, `i386-pc` on
+   BIOS). Problems are shown in a dialog and no disk is touched.
+2. Welcome (requirements: 20 GiB storage, 1 GiB RAM, root), location, keyboard,
+   partitions, users and summary. Disk changes start only after the final
+   confirmation.
+3. Partition → mount → unpack the image → machine ID → fstab → locale and keyboard
+   → users → display manager → network → hardware clock.
+4. `corrycleanup` purges `live-boot`/`live-config` packages (without autoremove),
+   removes the installer launchers and the live account (never its home directory).
+5. `initramfs` regenerates the initramfs without live-boot.
+6. `corrygrub` installs `grub-pc` (BIOS) or `grub-efi-amd64` (UEFI) inside the
+   target from the boot medium's package pool (`/run/live/medium/pool`,
+   `/run/live/medium/dists`), using a temporary, read-only bind mount and a
+   private APT state directory. The network is never used. If the pool lacks the
+   package but the image has the GRUB platform files, the installation continues
+   with a warning; the system boots, but GRUB updates must then be configured
+   manually.
+7. `grubcfg` writes `/etc/default/grub` (os-prober enabled), `bootloader` runs
+   `grub-install` (EFI directory `debian`, with the removable-media fallback), and
+   `umount` releases the target. The slideshow runs throughout.
 
-| Filesystem | Penggunaan |
+There is no software selection page and no package download. Ship the software
+each distribution needs in its live image.
+
+## Partitions and accounts
+
+| Filesystem | Use |
 | --- | --- |
-| Btrfs | Default `/`; subvolume `@`, `@home`, `@cache`, `@log`; zstd:1 |
-| ext4 / XFS | Pilihan otomatis dan manual |
-| FAT32 / VFAT | EFI `/boot/efi`, rekomendasi 512 MiB, minimum profil 100 MiB |
-| Swap | Memori virtual; tidak mempunyai titik kait |
-| ext2 / ext3 | Manual jika alat tersedia |
-| JFS / ReiserFS | Manual hanya jika alat KPMcore dan driver kernel mendukung |
+| Btrfs | Default `/`; subvolumes `@`, `@home`, `@cache`, `@log`; zstd:1 compression |
+| ext4 / XFS | Automatic and manual partitioning |
+| FAT32 / VFAT | EFI `/boot/efi`, 512 MiB recommended, 100 MiB minimum |
+| Swap | Virtual memory; no mount point |
+| ext2 / ext3 | Manual, when the tools are available |
+| JFS / ReiserFS | Manual, only when KPMcore and the kernel support them |
 
-Tombol peran Root, Home, EFI, Boot, Swap, Var dan Tmp mengubah rencana partisi.
-Root baru mulai 20 GiB, EFI 512 MiB, Boot 1 GiB, Swap 4 GiB, dibatasi ruang tersedia.
-Ukuran dan filesystem tetap dapat diedit. Mengedit partisi lama tidak menyalakan
-Format otomatis. Untuk `/home` lama, periksa Format tidak dipilih dan buat cadangan.
-Snapshot Btrfs otomatis belum disediakan. Enkripsi otomatis belum ditawarkan.
+The Root, Home, EFI, Boot, Swap, Var and Tmp buttons change the partition plan.
+A new Root starts at 20 GiB, EFI at 512 MiB, Boot at 1 GiB and Swap at 4 GiB,
+limited by the free space. Size and filesystem stay editable. Editing an existing
+partition never turns on Format automatically; for an existing `/home`, check
+that Format is off and keep a backup. Automatic Btrfs snapshots and automatic
+full-disk encryption are not offered yet.
 
-Password minimal satu karakter, tidak boleh kosong, dan konfirmasi harus sama.
-Root password terpisah dimatikan; akun memakai grup sudo. Login otomatis tidak dipilih.
-Kebijakan perubahan password setelah instalasi tetap mengikuti PAM sistem target.
+Passwords need at least one character and must match. There is no separate root
+password; the account is in the `sudo` group. Automatic login is off by default.
 
-Atur `corrycleanup.conf` sesuai nama akun live (default `user`). Cleanup hanya bekerja
-di target, menghapus paket live tanpa autoremove, serta menghapus akun live yang
-berbeda dari akun baru tanpa menghapus direktori home. Bootloader memakai direktori
-EFI `debian` yang diperlukan GRUB Debian standar; nama produk tetap berbeda di UI.
+Set `liveUser` in `corrycleanup.conf` to the live account name (Debian live-build
+uses `user`).
 
-## Verifikasi dan batas rilis
+## Verification and release limits
 
-Tes profil memeriksa schema, urutan job, cleanup dan image hilang. Tes perangkat lunak
-mencakup offline, pilihan tidak dikenal, repo gagal, hash cache berubah dan kegagalan
-pemasangan. Tes integrasi APT membuat repo lokal bertanda tangan dan dua paket contoh
-(app + dependensi), membuat squashfs, mengunduh keduanya, menghapus repo, lalu
-memasang paket secara offline ke root dpkg sementara. Tes ini tidak memformat disk.
+`tools/test-profile.py` checks the module schemas, the job order, that the
+software page is gone, both distribution profiles and the default-installer
+files, base detection, live cleanup and launcher removal, GRUB package selection
+and the package pool, and the preflight image check against a real squashfs.
 
-CI membangun backend lengkap untuk Debian 12/Qt5 dan Debian 13/Qt6, menjalankan tes
-native password/partisi/packagechooser dan memasang hasil build serta dua profil
-ke direktori staging. Build menghasilkan arsip pengembangan per distro dan basis
-Debian serta checksum SHA256 di artifact GitHub Actions (disimpan 14 hari). Arsip
-untuk pengujian root ISO/chroot dengan dependensi yang cocok, bukan paket Debian
-bertanda tangan atau ISO rilis. Hasil run CI terbaru di PR menjadi acuan status build.
+CI builds the complete backend on `debian:stable` and `debian:testing`, runs the
+native password and partition tests, installs the build and both profiles into
+staging directories, and uploads development archives with SHA256 checksums
+(kept for 14 days). These are for testing in ISO roots, not signed Debian packages
+or release ISOs.
 
-Screenshot berasal dari `tools/preview.py`: QML header/slideshow, QSS dan artwork
-produksi dengan isi halaman storyboard dan data contoh. Status internet/progresnya
-simulasi. Ini bukan bukti pemasangan ISO maupun hasil reboot.
+The screenshots come from `tools/preview.py`: production header and slideshow QML,
+stylesheet and artwork, with storyboard page bodies and sample data. They are not
+evidence of a successful ISO installation or reboot.
 
-Sebelum rilis, tuntaskan matriks VM untuk **masing-masing distro**:
+Before a release, complete this virtual-machine matrix **for each distribution and
+each base**:
 
-| Skenario | Hasil yang harus dibuktikan |
+| Scenario | What must be shown |
 | --- | --- |
-| UEFI + GPT / BIOS + MBR/GPT | Partisi tepat, initramfs/GRUB, reboot dan login |
-| Btrfs / ext4 / XFS | fstab dan boot sukses |
-| Manual + `/home` lama / multi-disk | Data dipertahankan, EFI dan bootloader sesuai disk |
-| Offline tanpa tambahan | Semua paket wajib tersedia dari image |
-| Online + tambahan / repo mati | Dependensi lengkap, kegagalan berhenti sebelum partisi |
-| Password satu karakter | Login dan sudo setelah reboot |
-| 1024×768 / HiDPI | Menu, halaman dan dialog dapat digunakan |
-| Kegagalan listrik/media/paket | Log dan pelepasan mount dapat diperiksa |
+| UEFI + GPT / BIOS + MBR and GPT | Correct partitions, initramfs, GRUB, reboot and login |
+| Btrfs / ext4 / XFS | fstab correct and boot succeeds |
+| Manual with existing `/home` / multiple disks | Data kept; EFI and boot loader on the right disk |
+| Pool with and without `grub-pc`/`grub-efi-amd64` | Package installed, or warning and successful boot |
+| Dual boot with another OS | os-prober entry in the GRUB menu |
+| One-character password | Login and sudo after reboot |
+| Installed system | No installer icon, menu entry or autostart |
+| 1024×768 / HiDPI | Header, pages and dialogs are usable |
+| Power, media or package failures | Logs are readable and mounts are released |
 
-Secure Boot dan enkripsi penuh belum tervalidasi. Tidak ada klaim keberhasilan 100%
-sebelum pengujian ISO/boot yang sesuai selesai.
+Secure Boot and full-disk encryption are not validated yet. Corry makes no claim
+of guaranteed success until the ISO and boot tests above pass.

@@ -3,9 +3,11 @@ import QtQuick 2.3
 import QtQuick.Controls 2.10
 import QtQuick.Layouts 1.3
 import "slides/Slides.js" as Content
+// Shown while the system is being installed. Accent colors are replaced per
+// distribution by tools/install-profile.sh.
 Rectangle {
     id: presentation
-    color: "#faf9fc"
+    color: "#f6f7f9"
     property var slides: Content.slides
     property int currentSlide: 0
     property bool active: false
@@ -15,22 +17,39 @@ Rectangle {
     function onActivate() { active = true; currentSlide = 0 }
     function onLeave() { active = false }
     Timer { interval: 9000; repeat: true; running: presentation.active && !presentation.paused && presentation.slides.length > 1; onTriggered: presentation.advance(1) }
-    ColumnLayout {
-        anchors.fill: parent; anchors.margins: 24; spacing: 12
-        Text { text: qsTr("A NEW START IS ON ITS WAY"); font.pixelSize: 11; font.letterSpacing: 1.5; color: "#74717c"; Layout.fillWidth: true }
-        Image {
-            Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 120
-            source: Qt.resolvedUrl("slides/" + presentation.slide.image)
-            fillMode: Image.PreserveAspectFit; asynchronous: true
+    RowLayout {
+        anchors.fill: parent; anchors.margins: 24; spacing: 32
+        Rectangle {
+            Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 3; Layout.minimumHeight: 160
+            radius: 20; color: "#ffffff"; border.color: "#e5e7eb"
+            Image {
+                anchors.fill: parent; anchors.margins: 16
+                source: Qt.resolvedUrl("slides/" + presentation.slide.image)
+                fillMode: Image.PreserveAspectFit; asynchronous: true; smooth: true; mipmap: true
+            }
         }
-        Text { text: presentation.slide.title; textFormat: Text.PlainText; font.pixelSize: 26; font.bold: true; color: "#272530"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-        Text { text: presentation.slide.description; textFormat: Text.PlainText; font.pixelSize: 15; color: "#74717c"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-        RowLayout {
-            Layout.fillWidth: true
-            SlideControl { text: "←"; Accessible.name: qsTr("Previous image"); enabled: presentation.slides.length > 1; onClicked: presentation.advance(-1) }
-            SlideControl { text: presentation.paused ? qsTr("Play") : qsTr("Pause"); onClicked: presentation.paused = !presentation.paused }
-            Text { text: presentation.slides.length ? (presentation.currentSlide + 1) + " / " + presentation.slides.length : qsTr("Preparing your system"); color: "#74717c"; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true }
-            SlideControl { text: "→"; Accessible.name: qsTr("Next image"); enabled: presentation.slides.length > 1; onClicked: presentation.advance(1) }
+        ColumnLayout {
+            Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 2
+            spacing: 14
+            Item { Layout.fillHeight: true }
+            Text { text: qsTr("INSTALLING"); font.pixelSize: 11; font.bold: true; font.letterSpacing: 1.6; color: "#6445a4" }
+            Text { text: presentation.slide.title; textFormat: Text.PlainText; font.pixelSize: 26; font.bold: true; color: "#1d2129"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+            Text { text: presentation.slide.description; textFormat: Text.PlainText; font.pixelSize: 15; lineHeight: 1.2; color: "#4b5563"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+            Row {
+                spacing: 6
+                Repeater {
+                    model: presentation.slides.length
+                    Rectangle { width: index === presentation.currentSlide ? 22 : 8; height: 8; radius: 4; color: index === presentation.currentSlide ? "#6445a4" : "#d1d5db" }
+                }
+            }
+            Item { Layout.fillHeight: true }
+            RowLayout {
+                spacing: 8
+                SlideControl { text: "←"; Accessible.name: qsTr("Previous image"); enabled: presentation.slides.length > 1; onClicked: presentation.advance(-1) }
+                SlideControl { text: presentation.paused ? qsTr("Play") : qsTr("Pause"); onClicked: presentation.paused = !presentation.paused }
+                SlideControl { text: "→"; Accessible.name: qsTr("Next image"); enabled: presentation.slides.length > 1; onClicked: presentation.advance(1) }
+                Text { text: presentation.slides.length ? (presentation.currentSlide + 1) + " / " + presentation.slides.length : ""; color: "#6b7280"; leftPadding: 6 }
+            }
         }
     }
 }
