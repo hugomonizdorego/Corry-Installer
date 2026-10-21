@@ -150,7 +150,7 @@ CreatePartitionDialog::CreatePartitionDialog( PartitionCoreModule* core,
                  PartitionTable::Flags() );
     initPartResizerWidget( freeSpacePartition.p );
     addPartitionRolePicker( m_ui->verticalLayout, m_ui->mountPointComboBox, m_ui->fsComboBox,
-                            m_ui->m_listFlags, usedMountPoints );
+                            m_ui->m_listFlags, usedMountPoints, m_ui->sizeSpinBox );
 }
 
 CreatePartitionDialog::CreatePartitionDialog( PartitionCoreModule* core,

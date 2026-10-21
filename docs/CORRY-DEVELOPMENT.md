@@ -36,7 +36,9 @@ rekomendasi dan 100 MiB sebagai batas minimum profil. Kebutuhan ukuran tetap ber
 pada isi ISO. Batas penyimpanan awal 20 GiB; sesuaikan dengan ukuran payload sebenarnya.
 Profil juga mempertahankan dukungan BIOS bawaan Calamares.
 
-Tombol peran hanya mengubah rencana. Mengedit partisi lama tidak otomatis menyalakan
+Tombol peran hanya mengubah rencana. Pada partisi baru, Root mulai dari 20 GiB, EFI
+512 MiB, Boot 1 GiB dan Swap 4 GiB, dibatasi ruang yang tersedia; ukuran tetap dapat
+diganti. Pergantian dari EFI menghapus hanya flag boot yang ditambahkan tombol itu. Mengedit partisi lama tidak otomatis menyalakan
 Format. Untuk `/home` yang sudah ada, pastikan Format tidak dipilih dan tetap buat
 cadangan data. Subvolume Btrfs bukan partisi terpisah dan bukan mekanisme pencadangan.
 Pembuatan snapshot otomatis belum termasuk iterasi ini.

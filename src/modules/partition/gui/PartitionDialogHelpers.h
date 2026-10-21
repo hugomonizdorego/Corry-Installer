@@ -24,10 +24,11 @@ class QComboBox;
 class QLabel;
 class QListWidget;
 class QVBoxLayout;
+class QSpinBox;
 
 /** Corry's shortcuts only edit the pending plan, never the disk. */
 void addPartitionRolePicker( QVBoxLayout* layout, QComboBox* mount, QComboBox* filesystem,
-                             QListWidget* flags, const QStringList& inUse );
+                             QListWidget* flags, const QStringList& inUse, QSpinBox* newPartitionSize = nullptr );
 
 /** Legacy filesystems require a driver in the running live kernel. */
 bool legacyFilesystemAvailable( FileSystem::Type type );

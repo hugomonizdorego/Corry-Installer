@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QtTest/QtTest>
@@ -33,7 +34,9 @@ private Q_SLOTS:
         auto* flags = new QListWidget( &dialog );
         setFlagList( *flags, PartitionTable::Flag::Boot, PartitionTable::Flags() );
         layout->addWidget( mount ); layout->addWidget( fs ); layout->addWidget( flags );
-        addPartitionRolePicker( layout, mount, fs, flags, { "/home" } );
+        QSpinBox size;
+        size.setRange( 1, 100000 );
+        addPartitionRolePicker( layout, mount, fs, flags, { "/home" }, &size );
         auto click = [ &dialog ]( const QString& name ) {
             for ( auto* button : dialog.findChildren< QToolButton* >() )
             { if ( button->text() == name ) { button->click(); return true; } }
@@ -43,12 +46,16 @@ private Q_SLOTS:
         QCOMPARE( mount->currentText(), QStringLiteral( "/boot/efi" ) );
         QCOMPARE( FileSystem::typeForName( fs->currentText() ), FileSystem::Fat32 );
         QVERIFY( flagsFromList( *flags ).testFlag( PartitionTable::Flag::Boot ) );
+        QCOMPARE( size.value(), 512 );
         QVERIFY( click( "Swap" ) );
         QVERIFY( mount->currentText().isEmpty() );
         QCOMPARE( FileSystem::typeForName( fs->currentText() ), FileSystem::LinuxSwap );
+        QCOMPARE( size.value(), 4096 );
+        QVERIFY( !flagsFromList( *flags ).testFlag( PartitionTable::Flag::Boot ) );
         QVERIFY( click( "Root /" ) );
         QCOMPARE( mount->currentText(), QStringLiteral( "/" ) );
         QCOMPARE( FileSystem::typeForName( fs->currentText() ), FileSystem::Btrfs );
+        QCOMPARE( size.value(), 20480 );
         for ( auto* button : dialog.findChildren< QToolButton* >() )
         { if ( button->text() == "Home" ) { QVERIFY( !button->isEnabled() ); } }
         fs->setDisabled( true );

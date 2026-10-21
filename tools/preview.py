@@ -174,6 +174,9 @@ class Preview(QWidget):
             if kind:fs.setCurrentText(kind)
             elif fs.currentText()=='Swap':fs.setCurrentText('Btrfs')
             mount.setCurrentText(path);hint.setText(description)
+            if new:
+                recommended = 512 if path=='/boot/efi' else 1024 if path=='/boot' else 4096 if kind=='Swap' else 20480 if path=='/' else 0
+                if recommended:size.setValue(recommended)
         roles=[('Root /','/',None,'Required: system files and applications.'),('Home','/home',None,'Personal files. Keep existing data only when Format is not selected.'),('EFI','/boot/efi','FAT32','UEFI boot files. FAT32, boot flag, recommended 512 MiB.'),('Boot','/boot',None,'Optional kernel partition. Recommended 1 GiB.'),('Swap','','Swap','Virtual memory. No mount point.'),('Var','/var',None,'Optional logs, databases and caches.'),('Tmp','/tmp',None,'Optional temporary files.')]
         for n,(text,path,kind,description) in enumerate(roles):
             button=QPushButton(text);button.clicked.connect(lambda checked=False,p=path,k=kind,d=description:role(p,k,d));grid.addWidget(button,n//4,n%4)

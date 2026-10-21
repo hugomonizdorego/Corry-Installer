@@ -17,6 +17,7 @@ jobs:
     steps:
       - run: apt-get update && apt-get install -y git ca-certificates
       - uses: actions/checkout@v4
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: bash tools/install-dependencies.sh build
       - run: python3 tools/test-profile.py
       - run: bash tools/build-corry.sh

@@ -30,8 +30,10 @@
 #include <QGridLayout>
 #include <QProcess>
 #include <QRadioButton>
+#include <QSpinBox>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <memory>
 
 bool
 legacyFilesystemAvailable( FileSystem::Type type )
@@ -67,7 +69,7 @@ legacyFilesystemAvailable( FileSystem::Type type )
 
 void
 addPartitionRolePicker( QVBoxLayout* layout, QComboBox* mount, QComboBox* filesystem,
-                        QListWidget* flags, const QStringList& inUse )
+                        QListWidget* flags, const QStringList& inUse, QSpinBox* newPartitionSize )
 {
     auto* box = new QWidget( mount->parentWidget() );
     box->setObjectName( "corryRolePicker" );
@@ -92,6 +94,8 @@ addPartitionRolePicker( QVBoxLayout* layout, QComboBox* mount, QComboBox* filesy
         { QT_TR_NOOP( "Tmp" ), "/tmp", FileSystem::Unknown, QT_TR_NOOP( "Optional: temporary files." ) }
     };
     int column = 0;
+    // Remember only a flag added by this picker; retain pre-existing/manual flags.
+    auto managedBootFlag = std::make_shared< bool >( false );
     for ( const auto& role : roles )
     {
         if ( role.requiredFS == FileSystem::Fat32 && ( !PartUtils::isEfiSystem() || efi.isEmpty() ) )
@@ -140,15 +144,30 @@ addPartitionRolePicker( QVBoxLayout* layout, QComboBox* mount, QComboBox* filesy
                 return;
             }
             setSelectedMountPoint( *mount, role.path );
-            // Preserve every other flag. Never clear a flag on another role click.
-            if ( role.requiredFS == FileSystem::Fat32 )
+            if ( newPartitionSize )
             {
-                for ( int i = 0; i < flags->count(); ++i )
+                int recommended = role.requiredFS == FileSystem::Fat32 ? 512
+                    : role.requiredFS == FileSystem::LinuxSwap ? 4096
+                    : role.path == "/boot" ? 1024 : role.path == "/" ? 20480 : 0;
+                if ( recommended )
                 {
-                    auto* flag = flags->item( i );
-                    if ( flag->data( Qt::UserRole ).toInt() == int( PartitionTable::Flag::Boot ) )
+                    newPartitionSize->setValue( qBound( newPartitionSize->minimum(), recommended, newPartitionSize->maximum() ) );
+                }
+            }
+            for ( int i = 0; i < flags->count(); ++i )
+            {
+                auto* flag = flags->item( i );
+                if ( flag->data( Qt::UserRole ).toInt() == int( PartitionTable::Flag::Boot ) )
+                {
+                    if ( role.requiredFS == FileSystem::Fat32 && flag->checkState() != Qt::Checked )
                     {
+                        *managedBootFlag = true;
                         flag->setCheckState( Qt::Checked );
+                    }
+                    else if ( role.requiredFS != FileSystem::Fat32 && *managedBootFlag )
+                    {
+                        flag->setCheckState( Qt::Unchecked );
+                        *managedBootFlag = false;
                     }
                 }
             }
