@@ -15,6 +15,10 @@
 
 #include <QStyledItemDelegate>
 #include <QWidget>
+#include <QVariantMap>
+
+class QLabel;
+class QQuickWidget;
 
 namespace Ui
 {
@@ -49,7 +53,8 @@ public:
     /// @brief Change the language from an external source.
     void externallySelectedLanguage( int row );
 
-    void init();
+    void init( const QVariantMap& configuration = QVariantMap() );
+    void setMediaActive( bool active );
 
 public slots:
     void retranslate();
@@ -66,6 +71,11 @@ private:
     Calamares::Locale::TranslationsModel* m_languages;
 
     Config* m_conf;
+    QQuickWidget* m_corryMedia = nullptr;
+    QLabel* m_corryIntroduction = nullptr;
+    QString m_corryTitle;
+    QString m_corryDescription;
+    bool m_mediaActive = true;
 };
 
 /** @brief Delegate to display language information in two columns.

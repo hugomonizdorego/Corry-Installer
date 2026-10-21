@@ -4,7 +4,7 @@
 Corry is an early development fork of **Calamares 3.3.15** for **Edukasaun OS** and
 **DebION GNU/Linux**, with a shared installation engine and separate product assets.
 
-![DebION design preview](docs/screenshots/debion-welcome.png)
+![DebION design preview](docs/screenshots/debion/01-welcome.png)
 
 The screenshots are **Qt design previews with sample data**. They share production
 QML, styles and artwork. Page bodies are a storyboard, not exact captures of every
@@ -14,8 +14,11 @@ native page or evidence of a successful ISO installation.
 
 - Horizontal step menu, wider workspace and a two-column native welcome page.
 - Language → location → keyboard → software → partitions → account → review → install.
-- Separate names, palettes, artwork, slideshow manifests and software catalogs for both OSes.
-- Local image slideshow with automatic advance, pause, previous and next controls.
+- One editable `branding.yaml` per distro, with separate images, video, music and software catalogs.
+- Embedded welcome video with Play/Pause, sound control and poster fallback.
+- Teal/slate for DebION and forest/slate for Edukasaun; no purple theme.
+- Local slideshow with automatic advance, pause, previous/next and background music controls.
+- Explicit continue-live or restart choice at finish; continue-live is the default.
 - Signed repository check, retry button and optional software selected with ordinary clicks.
 - Dependencies resolved against the **installation image's** package status. All required
   downloads complete **before partitioning**; target package installation uses `--no-download`.
@@ -39,8 +42,11 @@ sudo bash tools/install-dependencies.sh build
 bash tools/build-corry.sh
 python3 tools/test-profile.py
 python3 tools/test-software.py
-QT_QPA_PLATFORM=offscreen ctest --test-dir build-corry \
-  -R '^(userstest|partitionconfigtest|corrypartitiontest|packagechoosertest)$' --output-on-failure
+python3 tools/test-branding.py
+DESTDIR=/tmp/corry-stage-debion bash tools/install-profile.sh --distro debion
+QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+CORRY_TEST_BRAND_DIR=/tmp/corry-stage-debion/etc/calamares/branding/corry ctest --test-dir build-corry \
+  -R '^(userstest|partitionconfigtest|corrypartitiontest|packagechoosertest|corrymediatest|corryfinishedtest)$' --output-on-failure
 sudo cmake --install build-corry
 sudo bash tools/install-profile.sh --distro edukasaun
 # Or, for a different ISO build root:
@@ -72,23 +78,26 @@ Read the [integration and testing guide](docs/CORRY-DEVELOPMENT.md).
 
 Edit only `config/distros/edukasaun/` or `config/distros/debion/`:
 
-- `branding.desc`: displayed product names and links.
-- `profile.yaml`: accent colors.
-- `slides/slides.json`: image order, titles and descriptions. Images can be SVG, PNG or JPEG.
-- `slides/`: original local artwork or your own distro images.
-- `software.yaml`: mandatory packages and optional package groups.
+- `branding.yaml`: product name, colors, welcome/finish text, media paths and slide order.
+- `images/`: logo, video poster and slide artwork.
+- `video/welcome.webm`: playable welcome video (VP8).
+- `music/installation.ogg`: looping background music (Vorbis).
+- `software.yaml`: mandatory packages and optional application groups.
 
-Re-run `install-profile.sh --distro …` after editing. It generates the package chooser
-and slideshow JavaScript from these manifests, keeping frontend/backend choices aligned.
+Re-run `install-profile.sh --distro …` after editing. All configured assets and media
+are validated before replacing the active profile. Custom folders work with
+`--distro my-os --branding /path/to/branding`. See the [branding guide](docs/BRANDING.md)
+for settings, format conversion, disabling media and separate OS profiles.
 
 ## Safe preview
 
 ```bash
 pip install PySide6 PyYAML
 python3 tools/preview.py --distro edukasaun
-QT_QPA_PLATFORM=offscreen python3 tools/preview.py --distro debion --screenshots docs/screenshots
+QT_QPA_PLATFORM=offscreen python3 tools/preview.py --distro debion --screenshots docs/screenshots/debion
 ```
 
+See [all nine stages for both distros](docs/screenshots/README.md), from welcome to finish.
 The preview cannot install or access disks. Its repository status is explicitly simulated.
 The signed APT integration test uses temporary package roots in CI, not physical disks.
 A full ISO install and reboot in BIOS/UEFI VMs is still required before release.

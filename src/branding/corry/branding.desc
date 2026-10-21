@@ -24,12 +24,12 @@ strings:
 images:
   productIcon: corry-mark.svg
   productLogo: corry-mark.svg
-  productWelcome: slides/welcome.svg
+  productWelcome: welcome.svg
 style:
-  SidebarBackground: '#142c3d'
-  SidebarText: '#bdd0dc'
-  SidebarTextCurrent: '#ffffff'
-  SidebarBackgroundCurrent: '#29495b'
+  SidebarBackground: '#ffffff'
+  SidebarText: '#526970'
+  SidebarTextCurrent: '#08786f'
+  SidebarBackgroundCurrent: '#e6f4f1'
 slideshow: show.qml
 slideshowAPI: 2
 uploadServer:

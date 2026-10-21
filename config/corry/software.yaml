@@ -1,0 +1,32 @@
+required:
+- btrfs-progs
+- sudo
+- initramfs-tools
+- grub2-common
+groups:
+- id: office
+  name: Office & documents
+  name[id]: Kantor & dokumen
+  description: LibreOffice Writer and Calc. Click to select; click again to remove.
+    Requires a reachable signed repository.
+  packages:
+  - libreoffice-writer
+  - libreoffice-calc
+  screenshot: images/work.svg
+- id: media
+  name: Audio & video
+  name[id]: Audio & video
+  description: VLC media player. Packages and dependencies are downloaded before any
+    partition is changed.
+  packages:
+  - vlc
+  screenshot: images/welcome.svg
+- id: development
+  name: Development tools
+  name[id]: Alat pengembangan
+  description: Git and the Debian build toolchain. Optional; the base system can be
+    installed offline.
+  packages:
+  - git
+  - build-essential
+  screenshot: images/control.svg

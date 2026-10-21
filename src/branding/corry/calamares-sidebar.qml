@@ -8,8 +8,8 @@ Rectangle {
     id: header
     height: 112
     color: "#ffffff"
-    property color accent: "#6445a4"
-    property color tint: "#f0ecf8"
+    property color accent: "#08786f"
+    property color tint: "#e6f4f1"
     property string product: ""
     property string logo: ""
     Component.onCompleted: {
@@ -26,8 +26,8 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 10
             Image { source: header.logo; Layout.preferredWidth: 28; Layout.preferredHeight: 28 }
-            Text { text: "Corry"; color: "#272530"; font.pixelSize: 21; font.bold: true }
-            Text { text: "/  " + header.product; color: "#74717c"; font.pixelSize: 14; elide: Text.ElideRight; Layout.fillWidth: true }
+            Text { text: "Corry"; color: "#21343d"; font.pixelSize: 21; font.bold: true }
+            Text { text: "/  " + header.product; color: "#526970"; font.pixelSize: 14; elide: Text.ElideRight; Layout.fillWidth: true }
             Button { text: qsTr("About"); flat: true; onClicked: debug.about(); Accessible.name: text }
         }
         RowLayout {
@@ -39,15 +39,15 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 37
                     radius: 7
-                    color: index === ViewManager.currentStepIndex ? header.tint : "#f7f6f9"
+                    color: index === ViewManager.currentStepIndex ? header.tint : "#f2f7f6"
                     RowLayout {
                         anchors.fill: parent; anchors.margins: 6; spacing: 5
-                        Text { text: index < ViewManager.currentStepIndex ? "✓" : (index + 1).toString(); color: index <= ViewManager.currentStepIndex ? header.accent : "#74717c"; font.bold: true; font.pixelSize: 12 }
-                        Text { text: display; color: index === ViewManager.currentStepIndex ? header.accent : "#74717c"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { text: index < ViewManager.currentStepIndex ? "✓" : (index + 1).toString(); color: index <= ViewManager.currentStepIndex ? header.accent : "#526970"; font.bold: true; font.pixelSize: 12 }
+                        Text { text: display; color: index === ViewManager.currentStepIndex ? header.accent : "#526970"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
                     }
                 }
             }
         }
     }
-    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#e5e2e9" }
+    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#d7e2e1" }
 }

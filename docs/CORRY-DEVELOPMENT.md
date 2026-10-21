@@ -18,12 +18,13 @@ sudo bash tools/install-profile.sh --distro debion --image /run/live/medium/live
 DESTDIR=/tmp/edukasaun-root bash tools/install-profile.sh --distro edukasaun
 ```
 
-Nama/logo/slide tidak ditanam dalam kode instalasi. `config/distros/<id>/branding.desc`
-berisi nama produk; `profile.yaml` berisi warna; `slides/slides.json` memuat urutan,
-judul, deskripsi dan nama file gambar lokal. SVG/PNG/JPEG dapat dipakai. Script profil
-memvalidasi gambar dan menghasilkan `Slides.js` untuk Qt5/Qt6 tanpa akses web.
-Ganti isi folder tiap distro lalu jalankan pemasangan profil lagi. Engine/QML bersama
-berada di `src/branding/corry`; tidak perlu menduplikasi kode mesin untuk mengganti OS.
+Nama, warna, teks welcome/finish dan path media diatur dalam satu
+`config/distros/<id>/branding.yaml`. Gambar berada di `images/`, video di `video/`,
+dan musik di `music/`. Ganti file lalu jalankan pemasangan profil lagi. Compiler
+memvalidasi media sebelum profil aktif diganti. Folder distro lain dapat dipakai
+melalui `--distro my-os --branding /path/brand`. Lihat [panduan branding](BRANDING.md)
+untuk contoh konfigurasi dan konversi format. Engine/QML bersama berada di
+`src/branding/corry`; kode mesin tidak perlu diduplikasi untuk mengganti OS.
 
 Pakai desktop entry `corry-installer.desktop` sebagai launcher installer bawaan dalam
 konfigurasi desktop/live-build distro. Profil tidak membangun ISO dan tidak mengubah
@@ -62,6 +63,8 @@ chooser dan backend memakai katalog yang sama.
    yang diminta. Kegagalan tidak dilewati. Cache dibersihkan setelah sukses.
 6. Cleanup live → initramfs → konfigurasi GRUB → pemasangan bootloader → umount.
    Slideshow lokal berjalan selama fase eksekusi; dapat dijeda dan dipindah manual.
+   Musik latar mempunyai pengaturan volume dan aktif/nonaktif, dan berhenti saat
+   fase eksekusi ditinggalkan. Welcome mempunyai frame video terpisah.
 
 APT berjalan dengan status/lists/cache terpisah dan hook apt.conf sesi live dimatikan.
 Konfigurasi sumber tidak ditulis ulang ke mirror pihak ketiga. Sumber `trusted=yes`
@@ -105,15 +108,16 @@ pemasangan. Tes integrasi APT membuat repo lokal bertanda tangan dan dua paket c
 memasang paket secara offline ke root dpkg sementara. Tes ini tidak memformat disk.
 
 CI membangun backend lengkap untuk Debian 12/Qt5 dan Debian 13/Qt6, menjalankan tes
-native password/partisi/packagechooser dan memasang hasil build serta dua profil
+native password/partisi/packagechooser, pemutaran/decoding media dan kebijakan reboot dan memasang hasil build serta dua profil
 ke direktori staging. Build menghasilkan arsip pengembangan per distro dan basis
 Debian serta checksum SHA256 di artifact GitHub Actions (disimpan 14 hari). Arsip
 untuk pengujian root ISO/chroot dengan dependensi yang cocok, bukan paket Debian
 bertanda tangan atau ISO rilis. Hasil run CI terbaru di PR menjadi acuan status build.
 
-Screenshot berasal dari `tools/preview.py`: QML header/slideshow, QSS dan artwork
+Screenshot berasal dari `tools/preview.py`: QML header/video/slideshow, QSS dan artwork
 produksi dengan isi halaman storyboard dan data contoh. Status internet/progresnya
-simulasi. Ini bukan bukti pemasangan ISO maupun hasil reboot.
+simulasi. [Sembilan tahap tiap distro](screenshots/README.md) mencakup welcome sampai
+finish. Ini bukan bukti pemasangan ISO maupun hasil reboot.
 
 Sebelum rilis, tuntaskan matriks VM untuk **masing-masing distro**:
 

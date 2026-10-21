@@ -5,6 +5,11 @@
 #
 find_package(${qtname} ${QT_VERSION} CONFIG REQUIRED DBus Network)
 
+if(WITH_QML)
+    find_package(${qtname} REQUIRED COMPONENTS QuickWidgets)
+    set(CORRY_QUICK_LIB ${qtname}::QuickWidgets)
+endif()
+
 find_package(LIBPARTED)
 if(LIBPARTED_FOUND)
     set(PARTMAN_SRC checker/partman_devices.c)
@@ -36,6 +41,7 @@ calamares_add_plugin(welcome
         ${PARTMAN_LIB}
         ${qtname}::DBus
         ${qtname}::Network
+        ${CORRY_QUICK_LIB}
     SHARED_LIB
 )
 
@@ -44,3 +50,12 @@ calamares_add_test(
     SOURCES checker/GeneralRequirements.cpp ${PARTMAN_SRC} Config.cpp Tests.cpp
     LIBRARIES ${PARTMAN_LIB} ${qtname}::DBus ${qtname}::Network ${qtname}::Widgets Calamares::calamaresui
 )
+
+if(WITH_QML AND BUILD_TESTING)
+    find_package(${qtname} REQUIRED COMPONENTS Multimedia)
+    calamares_add_test(corrymediatest
+        GUI
+        SOURCES CorryMediaTests.cpp
+        LIBRARIES ${qtname}::QuickWidgets ${qtname}::Multimedia
+    )
+endif()

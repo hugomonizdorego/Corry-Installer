@@ -15,6 +15,7 @@
 #include "ui_WelcomePage.h"
 
 #include "Branding.h"
+#include "CalamaresConfig.h"
 #include "CalamaresAbout.h"
 #include "CalamaresVersion.h"
 #include "Config.h"
@@ -35,6 +36,12 @@
 #include <QFocusEvent>
 #include <QLabel>
 #include <QMessageBox>
+#include <QFileInfo>
+#ifdef WITH_QML
+#include <QQmlContext>
+#include <QQuickItem>
+#include <QQuickWidget>
+#endif
 
 WelcomePage::WelcomePage( Config* config, QWidget* parent )
     : QWidget( parent )
@@ -78,17 +85,38 @@ WelcomePage::WelcomePage( Config* config, QWidget* parent )
         // Keep the real requirements checker beside the preferences; it still
         // controls whether installation may continue.
         ui->verticalLayout->removeWidget( m_checkingWidget );
-        ui->horizontalLayout->addWidget( m_checkingWidget, 1 );
+        auto* mediaColumn = new QVBoxLayout;
+        ui->horizontalLayout->addLayout( mediaColumn, 1 );
+#ifdef WITH_QML
+        const QString mediaQml = Branding::instance()->componentDirectory() + "/WelcomeMedia.qml";
+        if ( QFileInfo::exists( mediaQml ) )
+        {
+            m_corryMedia = new QQuickWidget( this );
+            m_corryMedia->setObjectName( "corryWelcomeMedia" );
+            m_corryMedia->setResizeMode( QQuickWidget::SizeRootObjectToView );
+            m_corryMedia->setMinimumSize( 280, 220 );
+            m_corryMedia->rootContext()->setContextProperty( "corryQtMajorVersion", QT_VERSION_MAJOR );
+            connect( m_corryMedia, &QQuickWidget::statusChanged, this,
+                     [ this ]( QQuickWidget::Status status ) {
+                if ( status == QQuickWidget::Ready ) { setMediaActive( m_mediaActive ); }
+            } );
+            m_corryMedia->setSource( QUrl::fromLocalFile( mediaQml ) );
+            mediaColumn->addWidget( m_corryMedia, 2 );
+        }
+#endif
+        mediaColumn->addWidget( m_checkingWidget, 1 );
         ui->horizontalLayout->setStretch( 0, 1 );
         ui->horizontalLayout->setContentsMargins( 24, 20, 24, 20 );
         ui->horizontalLayout->setSpacing( 32 );
         ui->mainText->setAlignment( Qt::AlignLeft | Qt::AlignVCenter );
+        ui->mainText->setTextFormat( Qt::PlainText );
         QFont titleFont = ui->mainText->font();
         titleFont.setPointSize( 30 );
         titleFont.setBold( true );
         ui->mainText->setFont( titleFont );
         ui->languageIcon->hide();
         auto* introduction = new QLabel( this );
+        m_corryIntroduction = introduction;
         introduction->setWordWrap( true );
         introduction->setObjectName( "corryHint" );
         ui->verticalLayout->insertWidget( ui->verticalLayout->indexOf( ui->mainText ) + 1, introduction );
@@ -111,8 +139,11 @@ WelcomePage::WelcomePage( Config* config, QWidget* parent )
 }
 
 void
-WelcomePage::init()
+WelcomePage::init( const QVariantMap& configuration )
 {
+    m_corryTitle = configuration.value( "corryWelcomeTitle" ).toString();
+    m_corryDescription = configuration.value( "corryWelcomeDescription" ).toString();
+    retranslate();
     //setup the url buttons
     setupButton( WelcomePage::Button::Support, m_conf->supportUrl() );
     setupButton( WelcomePage::Button::KnownIssues, m_conf->knownIssuesUrl() );
@@ -125,6 +156,18 @@ WelcomePage::init()
     {
         setLanguageIcon( icon );
     }
+}
+
+void
+WelcomePage::setMediaActive( bool active )
+{
+    m_mediaActive = active;
+#ifdef WITH_QML
+    if ( m_corryMedia && m_corryMedia->rootObject() )
+    {
+        QMetaObject::invokeMethod( m_corryMedia->rootObject(), active ? "onActivate" : "onLeave" );
+    }
+#endif
 }
 
 void
@@ -233,8 +276,12 @@ WelcomePage::retranslate()
     const QString message = m_conf->genericWelcomeMessage();
 
     ui->mainText->setText( Calamares::Branding::instance()->componentName() == QStringLiteral( "corry" )
-        ? tr( "A fresh start.\nAt your pace.\n%1" ).arg( Calamares::Branding::instance()->shortProductName() )
+        ? ( m_corryTitle.isEmpty() ? tr( "A fresh start.\nAt your pace.\n%1" ).arg( Calamares::Branding::instance()->shortProductName() ) : m_corryTitle )
         : message.arg( Calamares::Branding::instance()->versionedName() ) );
+    if ( m_corryIntroduction && !m_corryDescription.isEmpty() )
+    {
+        m_corryIntroduction->setText( m_corryDescription );
+    }
     ui->retranslateUi( this );
     ui->supportButton->setText(
         tr( "%1 Support", "@action" ).arg( Calamares::Branding::instance()->shortProductName() ) );

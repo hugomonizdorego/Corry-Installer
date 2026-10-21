@@ -25,6 +25,7 @@
 #include <QMutexLocker>
 #ifdef WITH_QML
 #include <QQmlComponent>
+#include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWidget>
@@ -52,6 +53,7 @@ SlideshowQML::SlideshowQML( QWidget* parent )
     m_qmlShow->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Expanding );
     m_qmlShow->setResizeMode( QQuickWidget::SizeRootObjectToView );
     m_qmlShow->engine()->addImportPath( Calamares::qmlModulesDir().absolutePath() );
+    m_qmlShow->rootContext()->setContextProperty( "corryQtMajorVersion", QT_VERSION_MAJOR );
 
     cDebug() << "QML import paths:" << Logger::DebugList( m_qmlShow->engine()->importPathList() );
     CALAMARES_RETRANSLATE( if ( m_qmlShow ) { m_qmlShow->engine()->retranslate(); } );

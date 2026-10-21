@@ -52,6 +52,7 @@ signals:
     void selectionChanged();
 
 private:
+    void updateCorryChoices();
     Ui::PackageChooserPage* ui;
     PackageItem m_introduction;
     bool m_corryCheck = false;

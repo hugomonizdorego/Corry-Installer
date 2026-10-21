@@ -95,8 +95,11 @@ WelcomeViewStep::setConfigurationMap( const QVariantMap& configurationMap )
     m_conf->setConfigurationMap( configurationMap );
 
     //here init the qml or qwidgets needed bits
-    m_widget->init();
+    m_widget->init( configurationMap );
 }
+
+void WelcomeViewStep::onActivate() { m_widget->setMediaActive( true ); }
+void WelcomeViewStep::onLeave() { m_widget->setMediaActive( false ); }
 
 Calamares::RequirementsList
 WelcomeViewStep::checkRequirements()

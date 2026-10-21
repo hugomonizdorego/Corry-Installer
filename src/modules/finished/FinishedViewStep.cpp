@@ -100,6 +100,7 @@ void
 FinishedViewStep::setConfigurationMap( const QVariantMap& configurationMap )
 {
     m_config->setConfigurationMap( configurationMap );
+    m_widget->setConfigurationMap( configurationMap );
 }
 
 CALAMARES_PLUGIN_FACTORY_DEFINITION( FinishedViewStepFactory, registerPlugin< FinishedViewStep >(); )
