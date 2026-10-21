@@ -25,6 +25,9 @@ env:
 
 jobs:
   build:
+    # This retired upstream workflow refers to a removed calamares/actions repo.
+    # Corry uses corry.yml; do not run the upstream-only job in this fork.
+    if: github.repository == 'calamares/calamares'
     runs-on: ubuntu-latest
     container:
       image: docker://registry.fedoraproject.org/fedora:40

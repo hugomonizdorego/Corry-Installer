@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
 mode=${1:-runtime}
 case "$mode" in runtime|build) ;; *) echo 'Usage: install-dependencies.sh [runtime|build]' >&2; exit 2;; esac
 [[ $EUID == 0 ]] || { echo 'Run with sudo, or as root inside the ISO build chroot.' >&2; exit 1; }
