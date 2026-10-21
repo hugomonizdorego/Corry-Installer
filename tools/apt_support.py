@@ -100,7 +100,7 @@ def require_signed_sources(folder):
             raise RuntimeError('An APT source bypasses signature verification. Configure a signed repository before selecting additional software.')
         # Use the exact key material from the image, not an unrelated live keyring.
         for prefix in ['/usr/share/keyrings/', '/etc/apt/keyrings/']:
-            data = data.replace(prefix, str(Path(folder) / prefix.lstrip('/')))
+            data = data.replace(prefix, str(Path(folder) / prefix.lstrip('/')) + '/')
         source.write_text(data)
 
 

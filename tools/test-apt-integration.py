@@ -23,6 +23,8 @@ def command(args, **kwargs):
 
 def main():
     if os.geteuid()!=0:raise SystemExit('Run this integration test as root inside a disposable Debian CI container.')
+    # Verbose test-only runner: these URLs refer exclusively to local fixtures.
+    apt.run_command=command
     with tempfile.TemporaryDirectory(prefix='corry-integration-') as temp:
         root=Path(temp);repo=root/'repository';repo.mkdir()
         architecture=command(['dpkg','--print-architecture']).strip()

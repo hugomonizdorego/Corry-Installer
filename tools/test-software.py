@@ -69,6 +69,7 @@ class SoftwareTests(unittest.TestCase):
         self.assertIn('Dir::Etc::parts "-"',conf)
         self.assertIn('APT::Update::Error-Mode "any"',conf)
         self.assertNotIn('trusted=yes',(folder/'etc/apt/sources.list.d/base.sources').read_text())
+        self.assertIn(str(folder/'usr/share/keyrings/distro.gpg'),(folder/'etc/apt/sources.list.d/base.sources').read_text())
         self.assertTrue(json.loads((folder/'manifest.json').read_text())['archives'])
         apt.install(self.lib)
         self.assertIn('--no-download',self.target_calls[0]); self.assertIn('--no-remove',self.target_calls[0])
