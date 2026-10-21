@@ -269,7 +269,9 @@ setDimension( QQuickWidget* w, Qt::Orientation o, int desiredWidth )
         // (with *my* specific screen, style, etc. so YMMV).
         //
         // Bound between (16, 64) with a default of 48.
-        qreal minimumHeight = qBound( qreal( 16 ), w->rootObject() ? w->rootObject()->height() : 48, qreal( 64 ) );
+        const qreal maximumHeight = Calamares::Branding::instance()->componentName() == QStringLiteral( "corry" )
+            ? 128 : 64;
+        qreal minimumHeight = qBound( qreal( 16 ), w->rootObject() ? w->rootObject()->height() : 48, maximumHeight );
         w->setMinimumHeight( int( minimumHeight ) );
         w->setFixedHeight( int( minimumHeight ) );
     }

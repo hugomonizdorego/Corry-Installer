@@ -6,10 +6,11 @@ mode=${1:-runtime}
 case "$mode" in runtime|build) ;; *) echo 'Usage: install-dependencies.sh [runtime|build]' >&2; exit 2;; esac
 [[ $EUID == 0 ]] || { echo 'Run with sudo, or as root inside the ISO build chroot.' >&2; exit 1; }
 . /etc/os-release
-[[ ${ID:-} == debian ]] || { echo 'This dependency profile supports Debian 12 and 13.' >&2; exit 1; }
-case ${VERSION_ID:-} in 12|13) ;; *) echo 'Unsupported Debian release; validate package names first.' >&2; exit 1;; esac
-apt-get update
-runtime=(calamares zenity btrfs-progs xfsprogs e2fsprogs dosfstools jfsutils util-linux kmod parted
+[[ ${ID:-} == debian || " ${ID_LIKE:-} " == *" debian "* ]] || { echo 'This dependency profile supports Debian 12 and 13.' >&2; exit 1; }
+debian_version=${CORRY_DEBIAN_VERSION:-${VERSION_ID:-}}
+case $debian_version in 12|13) ;; *) echo 'Set CORRY_DEBIAN_VERSION=12 or 13 to the Debian base used by this derivative.' >&2; exit 1;; esac
+apt-get -o APT::Update::Error-Mode=any update
+runtime=(calamares ca-certificates debian-archive-keyring zenity btrfs-progs xfsprogs e2fsprogs dosfstools jfsutils util-linux kmod parted
   cryptsetup lvm2 squashfs-tools rsync locales tzdata keyboard-configuration
   initramfs-tools sudo os-prober efibootmgr grub2-common python3 python3-yaml
   polkitd pkexec fonts-noto-core)
@@ -25,7 +26,7 @@ if [[ $mode == build ]]; then
  common=(build-essential cmake ninja-build extra-cmake-modules pkg-config
    gettext libyaml-cpp-dev libicu-dev libpwquality-dev libkpmcore-dev libparted-dev
    python3-dev python3-jsonschema)
- if [[ $VERSION_ID == 13 ]]; then
+ if [[ $debian_version == 13 ]]; then
    qt=(qt6-base-dev qt6-declarative-dev qt6-tools-dev qt6-tools-dev-tools
      qt6-l10n-tools qt6-svg-dev libpolkit-qt6-1-dev libkf6coreaddons-dev
      libkf6config-dev libkf6i18n-dev libkf6service-dev libkf6package-dev libkf6widgetsaddons-dev

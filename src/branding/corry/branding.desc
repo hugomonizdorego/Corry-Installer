@@ -2,11 +2,11 @@
 ---
 componentName: corry
 welcomeStyleCalamares: false
-welcomeExpandingLogo: false
+welcomeExpandingLogo: true
 windowExpanding: normal
-windowSize: 1080px,720px
+windowSize: 1120px,780px
 windowPlacement: center
-sidebar: qml
+sidebar: qml,top
 navigation: widget
 strings:
   productName: "${NAME}"
@@ -24,7 +24,7 @@ strings:
 images:
   productIcon: corry-mark.svg
   productLogo: corry-mark.svg
-  productWelcome: welcome.svg
+  productWelcome: slides/welcome.svg
 style:
   SidebarBackground: '#142c3d'
   SidebarText: '#bdd0dc'

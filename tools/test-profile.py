@@ -5,6 +5,8 @@ from pathlib import Path
 import importlib.util
 import sys
 import tempfile
+import subprocess
+import json
 import types
 import unittest
 from unittest.mock import patch
@@ -30,12 +32,39 @@ class ProfileTests(unittest.TestCase):
             if schema.exists():
                 jsonschema.Draft7Validator(yaml.safe_load(schema.read_text())).validate(data)
         jobs = settings['sequence'][1]['exec']
+        self.assertEqual(jobs[0], 'corryprepare')
+        self.assertLess(jobs.index('unpackfs'), jobs.index('corrypackages'))
+        self.assertLess(jobs.index('corrypackages'), jobs.index('corrycleanup'))
         self.assertLess(jobs.index('corrycleanup'), jobs.index('initramfs'))
         self.assertLess(jobs.index('initramfs'), jobs.index('bootloader'))
         self.assertEqual(jobs[-1], 'umount')
         partition = yaml.safe_load((PROFILE / 'modules/partition.conf').read_text())
         self.assertEqual(partition['defaultFileSystemType'], 'btrfs')
         self.assertEqual(partition['initialPartitioningChoice'], 'none')
+
+    def test_both_distro_profiles_are_separate_and_complete(self):
+        names=[]
+        for distro in ['edukasaun','debion']:
+            with tempfile.TemporaryDirectory() as temp:
+                subprocess.run(['bash', str(ROOT/'tools/install-profile.sh'), '--distro', distro,
+                                '--image', '/tmp/Corry image.squashfs'],
+                               env={**__import__('os').environ,'DESTDIR':temp}, check=True,
+                               stdout=subprocess.PIPE)
+                config=Path(temp)/'etc/calamares'
+                brand=config/'branding/corry'
+                desc=yaml.safe_load((brand/'branding.desc').read_text())
+                names.append(desc['strings']['productName'])
+                self.assertEqual(desc['sidebar'],'qml,top')
+                self.assertTrue((brand/'slides/Slides.js').is_file())
+                for entry in json.loads((brand/'slides/slides.json').read_text()):
+                    self.assertTrue((brand/'slides'/entry['image']).is_file())
+                chooser=yaml.safe_load((config/'modules/packagechooser.conf').read_text())
+                catalog=yaml.safe_load((config/'corry-software.yaml').read_text())
+                self.assertEqual(chooser['mode'],'optionalmultiple')
+                self.assertEqual(chooser['items'][1:],catalog['groups'])
+                self.assertNotIn('default',chooser)
+                self.assertEqual(yaml.safe_load((config/'modules/corryprepare.conf').read_text())['image'],'/tmp/Corry image.squashfs')
+        self.assertEqual(names,['Edukasaun OS','DebION GNU/Linux'])
 
     def test_cleanup_never_touches_live_root(self):
         module_path = ROOT / 'src/modules/corrycleanup/main.py'

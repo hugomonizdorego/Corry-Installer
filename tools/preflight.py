@@ -10,7 +10,7 @@ import yaml
 
 REQUIRED = ("mkfs.btrfs", "mkfs.ext4", "mkfs.xfs", "mkfs.fat", "mkswap",
             "unsquashfs", "rsync", "parted", "grub-install", "grub-mkconfig",
-            "update-initramfs", "calamares", "modprobe", "sudo")
+            "update-initramfs", "calamares", "modprobe", "sudo", "apt-get", "dpkg-query")
 
 
 def check(config):

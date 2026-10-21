@@ -5,54 +5,49 @@ import QtQuick 2.3
 import QtQuick.Controls 2.10
 import QtQuick.Layouts 1.3
 Rectangle {
-    color: "#142c3d"
-    anchors.fill: parent
+    id: header
+    height: 112
+    color: "#ffffff"
+    property color accent: "#6445a4"
+    property color tint: "#f0ecf8"
+    property string product: ""
+    property string logo: ""
+    Component.onCompleted: {
+        accent = Branding.styleString(Branding.SidebarTextCurrent)
+        tint = Branding.styleString(Branding.SidebarBackgroundCurrent)
+        product = Branding.shortProductName()
+        logo = "file:" + Branding.imagePath(Branding.ProductLogo)
+    }
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 14
-        spacing: 8
-        Image {
-            Layout.topMargin: 14
-            Layout.preferredWidth: 46
-            Layout.preferredHeight: 46
-            source: "file:" + Branding.imagePath(Branding.ProductLogo)
+        anchors.leftMargin: 28; anchors.rightMargin: 28; anchors.topMargin: 12; anchors.bottomMargin: 9
+        spacing: 12
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 10
+            Image { source: header.logo; Layout.preferredWidth: 28; Layout.preferredHeight: 28 }
+            Text { text: "Corry"; color: "#272530"; font.pixelSize: 21; font.bold: true }
+            Text { text: "/  " + header.product; color: "#74717c"; font.pixelSize: 14; elide: Text.ElideRight; Layout.fillWidth: true }
+            Button { text: qsTr("About"); flat: true; onClicked: debug.about(); Accessible.name: text }
         }
-        Text { text: "Corry"; color: "white"; font.pixelSize: 28; font.bold: true }
-        Text { text: qsTr("A clear path to your desktop."); color: "#bdd0dc"; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 12 }
-        Rectangle { Layout.fillWidth: true; height: 1; color: "#345061"; Layout.topMargin: 14; Layout.bottomMargin: 8 }
-        ScrollView {
-          id: stepsArea
-          Layout.fillWidth: true
-          Layout.fillHeight: true
-          clip: true
-          contentWidth: availableWidth
-          Column {
-           width: stepsArea.availableWidth
-           spacing: 5
-           Repeater {
-            model: ViewManager
-            Rectangle {
-                width: parent.width
-                height: Math.max(48, stepText.implicitHeight + 18)
-                radius: 9
-                color: index === ViewManager.currentStepIndex ? "#29495b" : "transparent"
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    spacing: 8
-                    Rectangle {
-                        width: 25; height: 25; radius: 12
-                        color: index < ViewManager.currentStepIndex ? "#88cfc9" : index === ViewManager.currentStepIndex ? "#ee6848" : "#345061"
-                        Text { anchors.centerIn: parent; text: index < ViewManager.currentStepIndex ? "✓" : index + 1; color: index < ViewManager.currentStepIndex ? "#142c3d" : "white"; font.pixelSize: 12 }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 5
+            Repeater {
+                model: ViewManager
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 37
+                    radius: 7
+                    color: index === ViewManager.currentStepIndex ? header.tint : "#f7f6f9"
+                    RowLayout {
+                        anchors.fill: parent; anchors.margins: 6; spacing: 5
+                        Text { text: index < ViewManager.currentStepIndex ? "✓" : (index + 1).toString(); color: index <= ViewManager.currentStepIndex ? header.accent : "#74717c"; font.bold: true; font.pixelSize: 12 }
+                        Text { text: display; color: index === ViewManager.currentStepIndex ? header.accent : "#74717c"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
                     }
-                    Text { id: stepText; text: display; color: index === ViewManager.currentStepIndex ? "white" : "#bdd0dc"; wrapMode: Text.WordWrap; font.pixelSize: 13; Layout.fillWidth: true }
                 }
             }
         }
-          }
-        }
-        Text { text: qsTr("CORRY • DEVELOPMENT"); color: "#88cfc9"; font.pixelSize: 10; font.letterSpacing: 1 }
-        Text { text: qsTr("Review your choices before installing."); color: "#bdd0dc"; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 11 }
-        Button { text: qsTr("About"); Layout.fillWidth: true; onClicked: debug.about(); Accessible.name: text }
     }
+    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#e5e2e9" }
 }

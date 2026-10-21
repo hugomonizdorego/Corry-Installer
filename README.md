@@ -1,75 +1,95 @@
 <!-- SPDX-License-Identifier: CC0-1.0 -->
 # Corry Installer
 
-Corry is an early development fork of **Calamares 3.3.15** for Debian-based live images.
-It keeps Calamares' installation engine and adds original Corry branding, a guided
-step list, partition-role shortcuts, and an explicit Debian configuration.
+Corry is an early development fork of **Calamares 3.3.15** for **Edukasaun OS** and
+**DebION GNU/Linux**, with a shared installation engine and separate product assets.
 
-![Corry design preview](docs/screenshots/corry-partitions.png)
+![DebION design preview](docs/screenshots/debion-welcome.png)
 
-**The screenshots are from a safe Qt design preview with sample data.** The preview
-shares production artwork, QSS and sidebar QML. Its page bodies are a storyboard,
-not evidence of a completed ISO installation or an exact rendering of every native page.
+The screenshots are **Qt design previews with sample data**. They share production
+QML, styles and artwork. Page bodies are a storyboard, not exact captures of every
+native page or evidence of a successful ISO installation.
 
-## Included in this development iteration
+## This revision
 
-- Original Corry C/check mark, navy/coral/teal palette and numbered, scrollable sidebar.
-- Language → location → keyboard → partitions → account → review → installation → finish.
-- Btrfs by default; automatic layouts also offer ext4 and XFS.
-- Manual Root, Home, EFI, Boot, Swap, Var and Tmp shortcuts, with editable mount points.
-- Available manual filesystems depend on KPMcore tools and live-kernel support.
-- User passwords accept **one character or more**, require matching confirmation, and
-  reject empty passwords. Corry does not alter the installed system's PAM policy.
-- Debian dependency/build/profile scripts and read-only launcher preflight checks.
-- Explicit final installation confirmation; no destructive partitioning mode is preselected.
+- Horizontal step menu, wider workspace and a two-column native welcome page.
+- Language → location → keyboard → software → partitions → account → review → install.
+- Separate names, palettes, artwork, slideshow manifests and software catalogs for both OSes.
+- Local image slideshow with automatic advance, pause, previous and next controls.
+- Signed repository check, retry button and optional software selected with ordinary clicks.
+- Dependencies resolved against the **installation image's** package status. All required
+  downloads complete **before partitioning**; target package installation uses `--no-download`.
+- Offline base installation when the image already contains required packages and its kernel.
+- Btrfs default; ext4/XFS alternatives; manual Root/Home/EFI/Boot/Swap/Var/Tmp shortcuts.
+- Passwords accept one character or more; empty or mismatched passwords are rejected.
+- Explicit disk-operation confirmation and Debian 12/Qt5 + Debian 13/Qt6 CI builds.
 
-Read [the development and integration guide](docs/CORRY-DEVELOPMENT.md) before ISO integration.
-The native partition shortcuts require building this fork; installing just the profile
-on Debian's packaged Calamares changes branding and configuration only.
+The configuration is a maintained in-repository fork of
+[CatalystDevOrg/calamares-settings-debian](https://github.com/CatalystDevOrg/calamares-settings-debian).
+The imported source, ISC license and pinned revision are in `config/upstream/catalyst`.
+Linux Mint Live Installer informs the guided workflow and slideshow behavior; its
+Python engine and artwork are not copied. See [source provenance](config/upstream/catalyst/UPSTREAM.md).
 
-## Build in a Debian development machine or ISO build chroot
+## Build and integrate
+
+Run inside a disposable Debian development machine or ISO-build chroot:
 
 ```bash
 sudo bash tools/install-dependencies.sh build
 bash tools/build-corry.sh
+python3 tools/test-profile.py
+python3 tools/test-software.py
 QT_QPA_PLATFORM=offscreen ctest --test-dir build-corry \
-  -R '^(userstest|partitionconfigtest|corrypartitiontest)$' --output-on-failure
+  -R '^(userstest|partitionconfigtest|corrypartitiontest|packagechoosertest)$' --output-on-failure
 sudo cmake --install build-corry
-sudo bash tools/install-profile.sh
+sudo bash tools/install-profile.sh --distro edukasaun
+# Or, for a different ISO build root:
+# sudo bash tools/install-profile.sh --distro debion
 ```
 
-The source build uses the existing `calamares` executable/API paths. Installing to
-`/usr` replaces files from the Debian backend package. Use an isolated development
-machine/ISO chroot for this early integration; dedicated Debian packaging is future work.
-Set `CORRY_BUILD_JOBS` to tune compilation parallelism. Debian 12 uses Qt5; Debian 13 uses Qt6.
+The existing `calamares` executable/API paths are retained. Installing under `/usr`
+replaces files supplied by Debian's backend package; dedicated Debian packaging is
+future work. Include the built Corry backend and selected profile in the live ISO,
+and use `corry-installer.desktop` as its installer launcher.
 
-The default live image path is `/run/live/medium/live/filesystem.squashfs`. To change it:
+For derivatives, set `CORRY_DEBIAN_VERSION=12` or `13` to their actual Debian base
+when running the dependency and build scripts. Set `CORRY_BUILD_JOBS` to tune parallelism.
+The default image is `/run/live/medium/live/filesystem.squashfs`; override it with
+`--image /absolute/path.squashfs`. `DESTDIR` supports staging both profiles independently.
+
+Include runtime dependencies **before packing** the squashfs. The payload must
+contain a Debian kernel, firmware, desktop, login manager and correct signed APT
+sources/keyrings. Corry does not manufacture or validate a complete distro ISO.
+Read the [integration and testing guide](docs/CORRY-DEVELOPMENT.md).
+
+## Edit a distro without changing the engine
+
+Edit only `config/distros/edukasaun/` or `config/distros/debion/`:
+
+- `branding.desc`: displayed product names and links.
+- `profile.yaml`: accent colors.
+- `slides/slides.json`: image order, titles and descriptions. Images can be SVG, PNG or JPEG.
+- `slides/`: original local artwork or your own distro images.
+- `software.yaml`: mandatory packages and optional package groups.
+
+Re-run `install-profile.sh --distro …` after editing. It generates the package chooser
+and slideshow JavaScript from these manifests, keeping frontend/backend choices aligned.
+
+## Safe preview
 
 ```bash
-sudo bash tools/install-profile.sh --image /run/live/medium/live/custom.squashfs
+pip install PySide6 PyYAML
+python3 tools/preview.py --distro edukasaun
+QT_QPA_PLATFORM=offscreen python3 tools/preview.py --distro debion --screenshots docs/screenshots
 ```
 
-Include runtime dependencies **before** packing the live root filesystem. Ensure the
-squashfs contains the target kernel, firmware, desktop, login manager and bootloader
-utilities. The scripts do not build or validate those distribution-specific payloads.
+The preview cannot install or access disks. Its repository status is explicitly simulated.
+The signed APT integration test uses temporary package roots in CI, not physical disks.
+A full ISO install and reboot in BIOS/UEFI VMs is still required before release.
 
-## Safe design preview
+## Licensing
 
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install PySide6
-python tools/preview.py
-# Regenerate screenshots without accessing any disk:
-QT_QPA_PLATFORM=offscreen python tools/preview.py --screenshots docs/screenshots
-```
-
-The preview cannot run an installation. Native backend checks are separate from preview checks.
-
-## Upstream and licensing
-
-Calamares is free software. All upstream copyright notices and per-file licenses are
-retained in this fork; see `LICENSES/` and each file's SPDX identifier. New Corry code
-uses GPL-3.0-or-later unless marked otherwise; new Corry artwork/configuration is CC0-1.0.
-No Microsoft logos, screenshots, artwork, or proprietary installer assets are shipped.
-Upstream development: https://codeberg.org/Calamares/calamares
+Upstream per-file licenses and notices are retained; see `LICENSES/`. New Corry code
+uses GPL-3.0-or-later unless marked otherwise; original artwork is CC0-1.0. The imported
+Catalyst configuration retains its ISC notice. No Microsoft, Mint or Catalyst artwork
+is shipped. Calamares upstream: https://codeberg.org/Calamares/calamares
