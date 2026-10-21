@@ -51,6 +51,12 @@ public:
 
     void init();
 
+    /** @brief Corry: "greeting" (welcome, language, video) or "check"
+     * (requirements and internet). Empty keeps the stock Calamares page.
+     */
+    void setCorryPage( const QString& page );
+    QString corryPage() const { return m_corryPage; }
+
 public slots:
     void retranslate();
 
@@ -60,12 +66,16 @@ protected:
 private:
     /// @brief Fill the list of languages with the available translations
     void initLanguages();
+    /// @brief Corry welcome video (QML) or, without QML, the welcome image
+    QWidget* welcomeMedia();
 
     Ui::WelcomePage* ui;
     CheckerContainer* m_checkingWidget;
     Calamares::Locale::TranslationsModel* m_languages;
 
     Config* m_conf;
+    QString m_corryPage;
+    bool m_hideButtons = false;
 };
 
 /** @brief Delegate to display language information in two columns.

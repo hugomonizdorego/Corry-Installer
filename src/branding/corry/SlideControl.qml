@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import QtQuick 2.3
-import QtQuick.Controls 2.10
+import QtQuick 2.15
+import QtQuick.Controls 2.15
 Button {
     id: control
     implicitWidth: Math.max(44, contentItem.implicitWidth + 28)

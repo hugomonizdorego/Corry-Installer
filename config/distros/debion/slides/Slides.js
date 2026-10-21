@@ -1,2 +1,0 @@
-// SPDX-License-Identifier: CC0-1.0
-var slides = [{"image": "welcome.svg", "title": "Welcome to DebION GNU/Linux", "description": "Your system. Your choices."}, {"image": "work.svg", "title": "Built on Debian", "description": "Stable, secure and free software from Debian stable or Debian testing."}, {"image": "control.svg", "title": "Almost there", "description": "Keep the computer plugged in. Corry will tell you when the installation is complete."}];

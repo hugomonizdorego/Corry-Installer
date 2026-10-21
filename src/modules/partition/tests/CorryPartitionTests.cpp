@@ -46,7 +46,7 @@ private Q_SLOTS:
         QCOMPARE( mount->currentText(), QStringLiteral( "/boot/efi" ) );
         QCOMPARE( FileSystem::typeForName( fs->currentText() ), FileSystem::Fat32 );
         QVERIFY( flagsFromList( *flags ).testFlag( PartitionTable::Flag::Boot ) );
-        QCOMPARE( size.value(), 512 );
+        QCOMPARE( size.value(), 300 );
         QVERIFY( click( "Root /" ) );
         QCOMPARE( FileSystem::typeForName( fs->currentText() ), FileSystem::Btrfs );
         QVERIFY( !flagsFromList( *flags ).testFlag( PartitionTable::Flag::Boot ) );

@@ -25,10 +25,12 @@ WelcomeViewStep::WelcomeViewStep( QObject* parent )
     , m_conf( new Config( this ) )
     , m_widget( new WelcomePage( m_conf ) )
 {
+    // Report this page's own verdict: Corry's greeting page never blocks, even
+    // while (or when) the system check on the next page fails.
     connect( Calamares::ModuleManager::instance(),
              &Calamares::ModuleManager::requirementsComplete,
              this,
-             &WelcomeViewStep::nextStatusChanged );
+             [ this ]( bool ) { emit nextStatusChanged( isNextEnabled() ); } );
     connect( m_conf, &Config::localeIndexChanged, m_widget, &WelcomePage::externallySelectedLanguage );
 }
 
@@ -43,6 +45,10 @@ WelcomeViewStep::~WelcomeViewStep()
 QString
 WelcomeViewStep::prettyName() const
 {
+    if ( m_widget->corryPage() == QStringLiteral( "check" ) )
+    {
+        return tr( "System check", "@title" );
+    }
     return tr( "Welcome", "@title" );
 }
 
@@ -64,7 +70,8 @@ WelcomeViewStep::isNextEnabled() const
 bool
 WelcomeViewStep::isBackEnabled() const
 {
-    return false;
+    // Corry's system-check page follows the greeting page.
+    return m_widget->corryPage() == QStringLiteral( "check" );
 }
 
 
@@ -93,6 +100,7 @@ void
 WelcomeViewStep::setConfigurationMap( const QVariantMap& configurationMap )
 {
     m_conf->setConfigurationMap( configurationMap );
+    m_widget->setCorryPage( Calamares::getString( configurationMap, "corryPage" ) );
 
     //here init the qml or qwidgets needed bits
     m_widget->init();

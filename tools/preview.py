@@ -26,8 +26,8 @@ ACCENT = '#6445a4'
 TINT = '#f0ecf8'
 MUTED = '#4b5563'
 # The step labels Calamares shows for the Corry sequence in settings.conf.
-STEPS = ['Welcome', 'Location', 'Keyboard', 'Partitions', 'Users', 'Summary', 'Install', 'Finish']
-WELCOME, LOCATION, KEYBOARD, PARTITIONS, USERS, SUMMARY, INSTALL, FINISH = range(len(STEPS))
+STEPS = ['Welcome', 'System check', 'Location', 'Keyboard', 'Partitions', 'Users', 'Summary', 'Install', 'Finish']
+WELCOME, CHECK, LOCATION, KEYBOARD, PARTITIONS, USERS, SUMMARY, INSTALL, FINISH = range(len(STEPS))
 
 
 class Steps(QAbstractListModel):
@@ -110,10 +110,10 @@ class Preview(QWidget):
         self.setWindowTitle('Corry Installer — Design preview')
         self.resize(1120, 780)
         self.setMinimumSize(960, 720)
-        self.rows = [['/dev/vda1', '512 MiB', 'FAT32', '/boot/efi', 'Keep'],
+        self.rows = [['/dev/vda1', '300 MiB', 'FAT32', '/boot/efi', 'Keep'],
                      ['/dev/vda2', '72 GiB', 'Btrfs', '/', 'Format'],
                      ['/dev/vda3', '4 GiB', 'Swap', '—', 'Format'],
-                     ['Free space', '51.5 GiB', '—', '—', 'Available']]
+                     ['Free space', '51.7 GiB', '—', '—', 'Available']]
         self.steps = Steps()
         self.brand = Brand()
         self.debug = Debug()
@@ -192,7 +192,7 @@ class Preview(QWidget):
         self.next.setVisible(step != INSTALL)
         self.cancel.setVisible(step not in (INSTALL, FINISH))
         self.next.setText({SUMMARY: 'Install', FINISH: 'Done'}.get(step, 'Next'))
-        getattr(self, 'page_' + STEPS[step].lower())()
+        getattr(self, 'page_' + STEPS[step].lower().replace(' ', '_'))()
         if step != INSTALL:
             self.layout.addStretch()
 
@@ -225,6 +225,18 @@ class Preview(QWidget):
         hero.addWidget(checks, 4)
         self.layout.addLayout(hero, 1)
 
+    def page_system_check(self):
+        self.title('Is this computer ready?', 'Corry checks that this computer can run ' + PRODUCT + ' and whether it is online.')
+        for item in ['At least 20 GiB of disk space', 'At least 1 GiB of memory', 'Running with administrator rights',
+                     'Connected to a power source', 'Screen is large enough', 'Connected to the Internet']:
+            self.layout.addWidget(label('✓   ' + item, 11))
+        box, cl = card(QHBoxLayout)
+        cl.addWidget(label('An internet connection is recommended. When online, Corry repairs broken packages and installs '
+                           'the latest updates while installing. Without internet, everything is installed from the '
+                           'installation media.', 10), 1)
+        cl.addWidget(QPushButton('Check again'))
+        self.layout.addWidget(box)
+
     def form_page(self, title, subtitle, fields, extra=None):
         self.title(title, subtitle)
         box, cl = card()
@@ -256,7 +268,8 @@ class Preview(QWidget):
         disk.addItems(['Sample virtual disk  ·  /dev/vda  ·  128 GiB'])
         self.layout.addWidget(disk)
         row = QHBoxLayout()
-        for text, callback in [('Erase disk (Btrfs)', self.auto_layout), ('Manual partitioning', lambda: None)]:
+        for text, callback in [('Erase disk (Btrfs)', self.auto_layout), ('Manual partitioning', lambda: None),
+                               ('Open GParted', lambda: None)]:
             button = QPushButton(text)
             button.clicked.connect(callback)
             row.addWidget(button)
@@ -351,7 +364,7 @@ class Preview(QWidget):
         self.tree.setCurrentItem(self.tree.topLevelItem(1))
 
     def auto_layout(self):
-        self.rows = [['/dev/vda1', '512 MiB', 'FAT32', '/boot/efi', 'Format'], ['/dev/vda2', '123.5 GiB', 'Btrfs', '/', 'Format'],
+        self.rows = [['/dev/vda1', '300 MiB', 'FAT32', '/boot/efi', 'Format'], ['/dev/vda2', '123.7 GiB', 'Btrfs', '/', 'Format'],
                      ['/dev/vda3', '4 GiB', 'Swap', '—', 'Format']]
         self.fill_tree()
 
@@ -396,14 +409,15 @@ class Preview(QWidget):
             elif fs.currentText() == 'Swap':
                 fs.setCurrentText('Btrfs')
             mount.setCurrentText(path)
+            esp.setChecked(path == '/boot/efi')
             hint.setText(description)
             if new:
-                recommended = 512 if path == '/boot/efi' else 1024 if path == '/boot' else 4096 if kind == 'Swap' else 20480 if path == '/' else 0
+                recommended = 300 if path == '/boot/efi' else 1024 if path == '/boot' else 4096 if kind == 'Swap' else 20480 if path == '/' else 0
                 if recommended:
                     size.setValue(recommended)
         roles = [('Root /', '/', None, 'Required: system files and applications.'),
                  ('Home', '/home', None, 'Personal files. Keep existing data only when Format is not selected.'),
-                 ('EFI', '/boot/efi', 'FAT32', 'UEFI boot files. FAT32, boot flag, recommended 512 MiB.'),
+                 ('EFI', '/boot/efi', 'FAT32', 'UEFI boot files. FAT32 with the boot/ESP flags, set automatically. Recommended: 300 MiB; adjust if needed.'),
                  ('Boot', '/boot', None, 'Optional kernel partition. Recommended 1 GiB.'),
                  ('Swap', '', 'Swap', 'Virtual memory. No mount point.'),
                  ('Var', '/var', None, 'Optional logs, databases and caches.'),
@@ -421,6 +435,8 @@ class Preview(QWidget):
         form.addRow('Filesystem', fs)
         form.addRow('Mount point', mount)
         layout.addLayout(form)
+        esp = QCheckBox('Flags: boot, esp (EFI system partition)')
+        layout.addWidget(esp)
         format_box = QCheckBox('Format this partition — erase its existing contents')
         format_box.setChecked(new or selected[4] == 'Format')
         layout.addWidget(format_box)
@@ -445,6 +461,9 @@ class Preview(QWidget):
         fs.currentTextChanged.connect(validate)
         validate()
         if screenshot:
+            roles_buttons = [b for b in dialog.findChildren(QPushButton) if b.text() == 'EFI']
+            if roles_buttons:
+                roles_buttons[0].click()
             dialog.show()
             QApplication.processEvents()
             dialog.grab().save(str(screenshot))
@@ -461,7 +480,8 @@ class Preview(QWidget):
 
 
 def themed(path):
-    path.write_text(path.read_text().replace('#6445a4', ACCENT).replace('#f0ecf8', TINT))
+    version = (ROOT / 'VERSION').read_text().strip()
+    path.write_text(path.read_text().replace('#6445a4', ACCENT).replace('#f0ecf8', TINT).replace('@CORRY_VERSION@', version))
 
 
 def main():
@@ -476,9 +496,11 @@ def main():
         overlay = ROOT / 'config/distros' / args.distro
         shutil.rmtree(BRAND / 'slides')
         shutil.copytree(overlay / 'slides', BRAND / 'slides')
-        profile = yaml.safe_load((overlay / 'profile.yaml').read_text())
-        PRODUCT, ACCENT, TINT = profile['name'], profile['accent'], profile['tint']
-        # Same substitution as tools/install-profile.sh.
+        profile = yaml.safe_load((overlay / 'distro.yaml').read_text())
+        PRODUCT, ACCENT, TINT = profile['short-name'], profile['colors']['accent'], profile['colors']['tint']
+        # Same substitution as tools/install-profile.sh (tools/corry-branding.py).
+        slides = [{k: s.get(k, '') for k in ['image', 'title', 'description']} for s in profile['slides']]
+        (BRAND / 'slides/Slides.js').write_text('var slides = ' + __import__('json').dumps(slides) + ';\n')
         for name in ['stylesheet.qss', 'corry-mark.svg', 'calamares-sidebar.qml', 'show.qml', 'SlideControl.qml']:
             themed(BRAND / name)
         app = QApplication(sys.argv[:1])
@@ -495,19 +517,17 @@ def main():
                 window.grab().save(str(args.screenshots / (args.distro + '-' + name + '.png')))
 
             def capture():
-                for step, name in [(WELCOME, 'welcome'), (PARTITIONS, 'partitions'), (USERS, 'users'), (SUMMARY, 'summary'), (FINISH, 'finish')]:
-                    window.show_step(step)
-                    app.processEvents()
-                    if step == USERS:
-                        window.password.setText('a')
-                        window.repeat.setText('a')
-                        assert window.next.isEnabled()
-                        window.repeat.setText('b')
-                        assert not window.next.isEnabled()
-                        window.repeat.setText('a')
-                    save(name)
-                    if step == PARTITIONS:
-                        window.edit_partition(True, args.screenshots / (args.distro + '-partition-role.png'))
+                # The real installer cannot list disks in a container, so the
+                # partition pages are the only screenshots taken from this preview.
+                window.show_step(PARTITIONS)
+                save('05-partitions-preview')
+                window.edit_partition(True, args.screenshots / (args.distro + '-06-partition-role-preview.png'))
+                window.show_step(USERS)
+                window.password.setText('a')
+                window.repeat.setText('a')
+                assert window.next.isEnabled()
+                window.repeat.setText('b')
+                assert not window.next.isEnabled()
                 window.show_step(INSTALL)
                 slide = window.slide.rootObject()
                 assert slide.property('active')
@@ -518,7 +538,6 @@ def main():
                 slide.onActivate()
 
                 def capture_slide():
-                    save('install')
                     slide.onLeave()
                     window.close()
                     app.quit()

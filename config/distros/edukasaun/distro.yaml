@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: CC0-1.0
+# Everything Corry shows for Edukasaun OS. Edit this file (and the images it
+# names), then run: sudo bash tools/install-profile.sh --distro edukasaun
+# See docs/BRANDING.md for every field.
+
+# Names shown in the installer, the window title and the GRUB menu.
+name: Edukasaun OS
+short-name: Edukasaun OS
+bootloader-name: Edukasaun OS
+# Product version. Empty: taken from VERSION_ID in the live system's /etc/os-release.
+version: ''
+
+# Accent (buttons, progress, highlights) and tint (soft backgrounds), as #rrggbb.
+colors:
+  accent: '#246452'
+  tint: '#e9f4ec'
+
+# Square logo (SVG or PNG). Empty: the Corry mark in the accent color.
+logo: ''
+
+# Links on the welcome page. Leave empty to hide a button.
+links:
+  website: https://github.com/hugomonizdorego/Corry-Installer
+  support: https://github.com/hugomonizdorego/Corry-Installer/issues
+  known-issues: https://github.com/hugomonizdorego/Corry-Installer/issues
+  release-notes: ''
+
+# Used for the internet check and to decide whether Corry updates packages.
+# Any HTTP(S) address of the distribution's package mirror works.
+internet-check-url: http://deb.debian.org/debian/
+
+# Welcome page: a muted, looping video (WebM or MP4) with an image as poster
+# and fallback. Leave video empty to show only the image.
+welcome:
+  image: slides/welcome.svg
+  video: media/welcome.webm
+
+# Background music during installation (Ogg, MP3 or WAV); the user can mute it.
+# Leave file empty for silence. Volume is 0.0 to 1.0.
+sound:
+  file: media/ambient.ogg
+  volume: 0.3
+
+# Installation slideshow: at least 5 slides. Images can be SVG, PNG or JPEG
+# photos, ideally 16:9 (for example 1600x900).
+slides:
+- image: welcome.svg
+  title: Welcome to Edukasaun OS
+  description: A calm place to learn, create and share.
+- image: debian.svg
+  title: Built on Debian
+  description: Stable, secure and free software from Debian stable or Debian testing.
+- image: learn.svg
+  title: Made for learning
+  description: Office, browser and learning tools are ready the moment you sign in.
+- image: update.svg
+  title: Connect for the smoothest install
+  description: With internet, Corry repairs broken packages and installs the latest updates while it works. Without it, everything
+    comes from the installation media.
+- image: secure.svg
+  title: Safe by design
+  description: Security updates come straight from Debian. Keep a backup of your important files on another disk or in the
+    cloud.
+- image: community.svg
+  title: You are not alone
+  description: Questions? Visit the support page from the welcome screen, or ask the community.
+- image: ready.svg
+  title: Almost there
+  description: Keep the computer plugged in. Corry will tell you when the installation is complete, then remove itself.

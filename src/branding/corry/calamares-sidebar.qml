@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import io.calamares.ui 1.0
 import io.calamares.core 1.0
-import QtQuick 2.3
-import QtQuick.Controls 2.10
-import QtQuick.Layouts 1.3
+import QtQuick 2.15
+import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
 // Corry header: product title and a horizontal stepper. Calamares allows at
 // most 128 px for the Corry header (see CalamaresWindow.cpp).
 Rectangle {
@@ -38,6 +38,7 @@ Rectangle {
                     color: "#6b7280"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true
                 }
             }
+            Text { text: "Corry @CORRY_VERSION@"; color: "#9ca3af"; font.pixelSize: 11 }
             Button {
                 id: about
                 text: qsTr("About")

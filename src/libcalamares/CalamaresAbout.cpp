@@ -59,7 +59,12 @@ aboutMaintainers()
 static QString
 substituteVersions( const QString& s )
 {
+#ifdef CORRY_VERSION
+    return s.arg( QStringLiteral( "Corry Installer" ) )
+        .arg( QStringLiteral( CORRY_VERSION " (based on Calamares " CALAMARES_VERSION ")" ) );
+#else
     return s.arg( CALAMARES_APPLICATION_NAME ).arg( CALAMARES_VERSION );
+#endif
 }
 
 const QString

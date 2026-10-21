@@ -49,6 +49,9 @@
 cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 
 set(CALAMARES_VERSION 3.3.15)
+# Corry's own release, kept in the VERSION file. CALAMARES_VERSION stays the
+# upstream base so library and module ABI versions do not change.
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" CORRY_VERSION LIMIT_COUNT 1)
 set(CALAMARES_RELEASE_MODE OFF) # Set to ON during a release
 
 if(CMAKE_SCRIPT_MODE_FILE)

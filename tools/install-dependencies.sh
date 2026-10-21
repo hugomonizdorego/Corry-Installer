@@ -13,7 +13,8 @@ apt-get -o APT::Update::Error-Mode=any update
 runtime=(calamares zenity btrfs-progs xfsprogs e2fsprogs dosfstools jfsutils util-linux kmod parted
   cryptsetup lvm2 squashfs-tools rsync locales tzdata keyboard-configuration
   initramfs-tools sudo os-prober efibootmgr grub2-common python3 python3-yaml
-  polkitd pkexec fonts-noto-core
+  polkitd pkexec fonts-noto-core gparted
+  qml6-module-qtmultimedia libqt6multimedia6
   qml6-module-qtquick qml6-module-qtquick-layouts qml6-module-qtquick-controls
   qml6-module-qtquick-templates qml6-module-qtquick-window qml6-module-qtqml-workerscript)
 # Binary support for the target architecture; no grub-pc/grub-efi metapackage conflict.

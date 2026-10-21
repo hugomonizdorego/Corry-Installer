@@ -87,7 +87,7 @@ addPartitionRolePicker( QVBoxLayout* layout, QComboBox* mount, QComboBox* filesy
     const QList< Role > roles {
         { QT_TR_NOOP( "Root /" ), "/", FileSystem::Unknown, QT_TR_NOOP( "Required: system and applications." ) },
         { QT_TR_NOOP( "Home" ), "/home", FileSystem::Unknown, QT_TR_NOOP( "Personal files. Formatting erases existing files." ) },
-        { QT_TR_NOOP( "EFI" ), efi, FileSystem::Fat32, QT_TR_NOOP( "UEFI boot files. Requires FAT32 and the boot flag. Recommended: 512 MiB." ) },
+        { QT_TR_NOOP( "EFI" ), efi, FileSystem::Fat32, QT_TR_NOOP( "UEFI boot files. FAT32 with the boot/ESP flags, set automatically. Recommended: 300 MiB; adjust if needed." ) },
         { QT_TR_NOOP( "Boot" ), "/boot", FileSystem::Unknown, QT_TR_NOOP( "Optional: kernel files. Recommended: 1 GiB." ) },
         { QT_TR_NOOP( "Swap" ), QString(), FileSystem::LinuxSwap, QT_TR_NOOP( "Extra virtual memory; no mount point." ) },
         { QT_TR_NOOP( "Var" ), "/var", FileSystem::Unknown, QT_TR_NOOP( "Optional: logs, databases and cache." ) },
@@ -147,7 +147,7 @@ addPartitionRolePicker( QVBoxLayout* layout, QComboBox* mount, QComboBox* filesy
             setSelectedMountPoint( *mount, role.path );
             if ( newPartitionSize )
             {
-                int recommended = role.requiredFS == FileSystem::Fat32 ? 512
+                int recommended = role.requiredFS == FileSystem::Fat32 ? 300
                     : role.requiredFS == FileSystem::LinuxSwap ? 4096
                     : role.path == "/boot" ? 1024 : role.path == "/" ? 20480 : 0;
                 if ( recommended )
@@ -158,6 +158,7 @@ addPartitionRolePicker( QVBoxLayout* layout, QComboBox* mount, QComboBox* filesy
             for ( int i = 0; i < flags->count(); ++i )
             {
                 auto* flag = flags->item( i );
+                // KPMcore's Boot flag is the EFI System Partition (ESP) flag on GPT.
                 if ( flag->data( Qt::UserRole ).toInt() == int( PartitionTable::Flag::Boot ) )
                 {
                     if ( role.requiredFS == FileSystem::Fat32 && flag->checkState() != Qt::Checked )

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Validate the shipped profile against the actual module schemas and job order."""
+"""Validate Corry's profile, branding and job modules without touching any disk."""
 from pathlib import Path
 import importlib.util
+import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
-import subprocess
-import json
 import types
-import shutil
 import unittest
 from unittest.mock import patch
 import yaml
@@ -16,85 +17,177 @@ import jsonschema
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / 'config/corry'
+DISTROS = ['edukasaun', 'debion']
 
 
-class ProfileTests(unittest.TestCase):
+def fake_calamares(values=None, configuration=None, call=None):
+    values = values or {}
+    log = types.SimpleNamespace(warnings=[], progress=[])
+    return types.SimpleNamespace(
+        globalstorage=types.SimpleNamespace(value=lambda key: values.get(key)),
+        job=types.SimpleNamespace(configuration=configuration or {}, setprogress=log.progress.append),
+        utils=types.SimpleNamespace(target_env_call=call or (lambda *args: 0), warning=log.warnings.append,
+                                    debug=lambda *args: None),
+        log=log)
+
+
+def load_module(name, fake, path=None):
+    with patch.dict(sys.modules, {'libcalamares': fake}):
+        spec = importlib.util.spec_from_file_location(name, path or ROOT / f'src/modules/{name}/main.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    module.libcalamares = fake
+    return module
+
+
+def stage(distro, *extra):
+    temp = tempfile.TemporaryDirectory()
+    subprocess.run(['bash', str(ROOT / 'tools/install-profile.sh'), '--distro', distro,
+                    '--image', '/tmp/live/Corry image.squashfs', *extra],
+                   env={**os.environ, 'DESTDIR': temp.name}, check=True, stdout=subprocess.PIPE)
+    return temp
+
+
+class SequenceTests(unittest.TestCase):
     def test_schemas_and_sequence(self):
         settings = yaml.safe_load((PROFILE / 'settings.conf').read_text())
         self.assertEqual(settings, yaml.safe_load((ROOT / 'settings.conf').read_text()))
         self.assertTrue(settings['prompt-install'])
+        instances = {f"{i['module']}@{i['id']}": i for i in settings['instances']}
         for phase in settings['sequence']:
             for name in next(iter(phase.values())):
-                module = ROOT / 'src/modules' / name
+                module = ROOT / 'src/modules' / name.split('@')[0]
                 self.assertTrue((module / 'module.desc').exists() or (module / 'CMakeLists.txt').exists(), name)
+                if '@' in name:
+                    self.assertIn(name, instances)
+        schemas = {'welcomecheck': 'welcome'}
         for config in (PROFILE / 'modules').glob('*.conf'):
-            data = yaml.safe_load(config.read_text())
-            schema = ROOT / f'src/modules/{config.stem}/{config.stem}.schema.yaml'
+            module = schemas.get(config.stem, config.stem)
+            schema = ROOT / f'src/modules/{module}/{module}.schema.yaml'
             if schema.exists():
-                jsonschema.Draft7Validator(yaml.safe_load(schema.read_text())).validate(data)
+                jsonschema.Draft7Validator(yaml.safe_load(schema.read_text())).validate(yaml.safe_load(config.read_text()))
         shown = settings['sequence'][0]['show']
-        self.assertEqual(shown, ['welcome', 'locale', 'keyboard', 'partition', 'users', 'summary'])
+        self.assertEqual(shown, ['welcome', 'welcome@check', 'locale', 'keyboard', 'partition', 'users', 'summary'])
         jobs = settings['sequence'][1]['exec']
-        # The software page and its network jobs were removed: installs are offline.
         for removed in ['packagechooser', 'corryprepare', 'corrypackages']:
             self.assertNotIn(removed, shown + jobs)
             self.assertFalse((ROOT / 'src/modules' / removed / 'module.desc').exists())
         self.assertEqual(jobs[0], 'partition')
-        self.assertLess(jobs.index('unpackfs'), jobs.index('corrycleanup'))
-        self.assertLess(jobs.index('users'), jobs.index('corrycleanup'))
-        self.assertLess(jobs.index('corrycleanup'), jobs.index('initramfs'))
-        self.assertLess(jobs.index('initramfs'), jobs.index('corrygrub'))
-        self.assertLess(jobs.index('corrygrub'), jobs.index('grubcfg'))
-        self.assertLess(jobs.index('grubcfg'), jobs.index('bootloader'))
+        order = ['unpackfs', 'users', 'corrycleanup', 'corryupdate', 'corrygrub', 'initramfs', 'grubcfg', 'bootloader']
+        for before, after in zip(order, order[1:]):
+            self.assertLess(jobs.index(before), jobs.index(after), (before, after))
         self.assertEqual(jobs[-1], 'umount')
         build = (ROOT / 'tools/build-corry.sh').read_text()
         for name in shown + jobs + ['finished']:
-            self.assertIn(' ' + name + ' ', build)
-        partition = yaml.safe_load((PROFILE / 'modules/partition.conf').read_text())
+            self.assertIn(' ' + name.split('@')[0] + ' ', build)
+
+    def test_profile_choices(self):
+        modules = PROFILE / 'modules'
+        partition = yaml.safe_load((modules / 'partition.conf').read_text())
         self.assertEqual(partition['defaultFileSystemType'], 'btrfs')
-        self.assertEqual(partition['initialPartitioningChoice'], 'none')
+        self.assertEqual(partition['efi']['recommendedSize'], '300MiB')
+        users = yaml.safe_load((modules / 'users.conf').read_text())
+        self.assertTrue(users['setRootPassword'])
+        self.assertTrue(users['doReusePassword'])
+        greeting = yaml.safe_load((modules / 'welcome.conf').read_text())
+        check = yaml.safe_load((modules / 'welcomecheck.conf').read_text())
+        self.assertEqual((greeting['corryPage'], check['corryPage']), ('greeting', 'check'))
+        self.assertEqual(greeting['requirements']['check'], [])
+        self.assertIn('internet', check['requirements']['check'])
+        self.assertNotIn('internet', check['requirements']['required'])
+        grub = yaml.safe_load((modules / 'grubcfg.conf').read_text())
+        self.assertFalse(grub['defaults']['GRUB_DISABLE_OS_PROBER'])
+        self.assertEqual((ROOT / 'VERSION').read_text().strip(), '0.1')
+
+
+class BrandingTests(unittest.TestCase):
+    def branding(self):
+        spec = importlib.util.spec_from_file_location('corry_branding', ROOT / 'tools/corry-branding.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
 
     def test_both_distro_profiles_are_separate_and_complete(self):
-        names=[]
-        for distro in ['edukasaun','debion']:
-            with tempfile.TemporaryDirectory() as temp:
-                subprocess.run(['bash', str(ROOT/'tools/install-profile.sh'), '--distro', distro,
-                                '--image', '/tmp/live/Corry image.squashfs'],
-                               env={**__import__('os').environ,'DESTDIR':temp}, check=True,
-                               stdout=subprocess.PIPE)
-                config=Path(temp)/'etc/calamares'
-                brand=config/'branding/corry'
-                desc=yaml.safe_load((brand/'branding.desc').read_text())
+        names = []
+        for distro in DISTROS:
+            with stage(distro) as temp:
+                root = Path(temp)
+                config = root / 'etc/calamares'
+                brand = config / 'branding/corry'
+                desc = yaml.safe_load((brand / 'branding.desc').read_text())
                 names.append(desc['strings']['productName'])
-                self.assertEqual(desc['sidebar'],'qml,top')
-                self.assertTrue((brand/'slides/Slides.js').is_file())
-                for entry in json.loads((brand/'slides/slides.json').read_text()):
-                    self.assertTrue((brand/'slides'/entry['image']).is_file())
-                for entry in json.loads((brand/'slides/slides.json').read_text()):
-                    self.assertTrue(entry['title'].isascii() and entry['description'].isascii())
-                self.assertFalse((config/'modules/packagechooser.conf').exists())
-                self.assertFalse((config/'corry-software.yaml').exists())
-                self.assertEqual(yaml.safe_load((config/'modules/corrygrub.conf').read_text())['medium'], '/tmp')
-                root=Path(temp)
-                launcher=(root/'usr/share/applications/corry-installer.desktop').read_text()
-                self.assertIn('Name=Install '+desc['strings']['productName']+'\n', launcher)
-                self.assertNotIn('[id]', launcher)
-                self.assertTrue((root/'etc/skel/Desktop/corry-installer.desktop').is_file())
-                self.assertFalse((root/'etc/xdg/autostart/corry-installer.desktop').exists())
+                self.assertEqual(desc['sidebar'], 'qml,top')
+                self.assertTrue((brand / desc['images']['productWelcome']).is_file())
+                source = yaml.safe_load((ROOT / f'config/distros/{distro}/distro.yaml').read_text())
+                slides = json.loads((brand / 'slides/Slides.js').read_text().split('var slides = ')[1].rstrip(';\n'))
+                self.assertGreaterEqual(len(slides), 5)
+                for slide in slides:
+                    self.assertTrue((brand / 'slides' / slide['image']).is_file())
+                    self.assertTrue(slide['title'].isascii() and slide['description'].isascii())
+                media = json.loads((brand / 'media.js').read_text().split('var media = ')[1].rstrip(';\n'))
+                self.assertTrue((brand / media['video']).is_file())
+                self.assertTrue((brand / media['sound']).is_file())
+                accent = source['colors']['accent']
+                for themed in ['stylesheet.qss', 'show.qml', 'corry-mark.svg', 'calamares-sidebar.qml']:
+                    self.assertIn(accent, (brand / themed).read_text())
+                self.assertIn('Corry 0.1', (brand / 'calamares-sidebar.qml').read_text())
+                self.assertFalse((config / 'modules/packagechooser.conf').exists())
+                grub = yaml.safe_load((config / 'modules/corrygrub.conf').read_text())
+                self.assertEqual(grub['medium'], '/tmp')
+                self.assertEqual(grub['checkUrl'], source['internet-check-url'])
+                self.assertEqual(yaml.safe_load((config / 'modules/unpackfs.conf').read_text())['unpack'][0]['source'],
+                                 '/tmp/live/Corry image.squashfs')
+                launcher = (root / 'usr/share/applications/corry-installer.desktop').read_text()
+                self.assertIn('Name=Install ' + desc['strings']['productName'] + '\n', launcher)
+                self.assertTrue((root / 'etc/skel/Desktop/corry-installer.desktop').is_file())
+                self.assertFalse((root / 'etc/xdg/autostart/corry-installer.desktop').exists())
                 for hidden in ['calamares', 'install-debian']:
-                    self.assertIn('Hidden=true', (root/f'usr/local/share/applications/{hidden}.desktop').read_text())
-                self.assertIn('/usr/bin/corry-installer', (root/'usr/local/bin/install-debian').read_text())
-                accent=yaml.safe_load((ROOT/f'config/distros/{distro}/profile.yaml').read_text())['accent']
-                for themed in ['stylesheet.qss', 'show.qml', 'corry-mark.svg']:
-                    self.assertIn(accent, (brand/themed).read_text())
-        self.assertEqual(names,['Edukasaun OS','DebION GNU/Linux'])
+                    self.assertIn('Hidden=true', (root / f'usr/local/share/applications/{hidden}.desktop').read_text())
+                self.assertIn('/usr/bin/corry-installer', (root / 'usr/local/bin/install-debian').read_text())
+                manifest = (root / 'usr/lib/corry/manifest').read_text().split()
+                for path in ['/etc/calamares', '/usr/bin/corry-installer', '/usr/lib/corry']:
+                    self.assertIn(path, manifest)
+        self.assertEqual(names, ['Edukasaun OS', 'DebION GNU/Linux'])
+        with stage('edukasaun', '--autostart') as temp:
+            self.assertIn('Exec=corry-installer', (Path(temp) / 'etc/xdg/autostart/corry-installer.desktop').read_text())
+
+    def test_branding_validation(self):
+        branding = self.branding()
         with tempfile.TemporaryDirectory() as temp:
-            subprocess.run(['bash', str(ROOT/'tools/install-profile.sh'), '--distro', 'edukasaun', '--autostart'],
-                           env={**__import__('os').environ,'DESTDIR':temp}, check=True, stdout=subprocess.PIPE)
-            self.assertIn('Exec=corry-installer', (Path(temp)/'etc/xdg/autostart/corry-installer.desktop').read_text())
+            folder = Path(temp) / 'mine'
+            shutil.copytree(ROOT / 'config/distros/debion', folder)
+            data = yaml.safe_load((folder / 'distro.yaml').read_text())
+            self.assertEqual(len(branding.load(folder)['slides']), len(data['slides']))
+            for change, message in [
+                (lambda d: d.update(slides=d['slides'][:4]), 'at least 5'),
+                (lambda d: d['colors'].update(accent='green'), 'colors.accent'),
+                (lambda d: d['slides'][0].update(image='../escape.svg'), 'inside'),
+                (lambda d: d['welcome'].update(video='media/missing.webm'), 'not found'),
+                (lambda d: d['sound'].update(volume=3), 'volume')]:
+                broken = json.loads(json.dumps(data))
+                change(broken)
+                (folder / 'distro.yaml').write_text(yaml.safe_dump(broken))
+                with self.assertRaisesRegex(branding.BrandingError, message):
+                    branding.load(folder)
+            data['welcome']['video'] = ''
+            data['sound']['file'] = ''
+            (folder / 'distro.yaml').write_text(yaml.safe_dump(data))
+            self.assertEqual(branding.load(folder)['welcome']['video'], '')
+
+    def test_new_distro_tool(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repo = Path(temp) / 'repo'
+            for part in ['tools', 'config/distros/debion']:
+                shutil.copytree(ROOT / part, repo / part)
+            subprocess.run([sys.executable, str(repo / 'tools/new-distro.py'), 'demo-os', 'Demo OS',
+                            '--accent', '#123456', '--no-media'], check=True, stdout=subprocess.PIPE)
+            data = yaml.safe_load((repo / 'config/distros/demo-os/distro.yaml').read_text())
+            self.assertEqual((data['name'], data['colors']['accent']), ('Demo OS', '#123456'))
+            self.assertEqual(data['slides'][0]['title'], 'Welcome to Demo OS')
 
     def test_debian_base_detection(self):
         script = ROOT / 'tools/debian-base.sh'
+
         def base(version, override=''):
             with tempfile.NamedTemporaryFile('w') as stub:
                 stub.write(version)
@@ -110,87 +203,67 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(base('12.9\n', 'testing').stdout.strip(), 'testing')
         self.assertNotEqual(base('13\n', 'sid').returncode, 0)
 
+
+class CleanupTests(unittest.TestCase):
     def test_cleanup_never_touches_live_root(self):
-        module_path = ROOT / 'src/modules/corrycleanup/main.py'
-        fake = types.SimpleNamespace(globalstorage=types.SimpleNamespace(value=lambda key: '/'), utils=types.SimpleNamespace(), job=types.SimpleNamespace(configuration={}))
-        with patch.dict(sys.modules, {'libcalamares': fake}):
-            spec = importlib.util.spec_from_file_location('corrycleanup', module_path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-        self.assertIsNotNone(module.run())
+        fake = fake_calamares({'rootMountPoint': '/'})
+        self.assertIsNotNone(load_module('corrycleanup', fake).run())
+
+    def test_cleanup_purges_live_and_installer_packages(self):
         calls = []
-        fake.globalstorage.value = lambda key: '/tmp/test-target'
+
         def call(args):
             calls.append(args)
             if args[0] == 'dpkg-query':
-                return 0 if args[-1] == 'live-config' else 1
+                return 0 if args[-1] in ('live-config', 'calamares') else 1
             return 0
-        fake.utils.target_env_call = call
-        self.assertIsNone(module.run())
-        self.assertEqual(calls[-1], ['dpkg', '--purge', 'live-config'])
-        self.assertFalse(any('autoremove' in args for args in calls))
-
-    def test_cleanup_preserves_existing_home(self):
-        calls = []
-        fake = types.SimpleNamespace(
-            globalstorage=types.SimpleNamespace(value=lambda key: '/tmp/test-target' if key=='rootMountPoint' else 'hugo'),
-            job=types.SimpleNamespace(configuration={'liveUser': 'user'}),
-            utils=types.SimpleNamespace(target_env_call=lambda args: calls.append(args) or (1 if args[0]=='dpkg-query' else 0)))
-        with patch.dict(sys.modules, {'libcalamares': fake}):
-            spec = importlib.util.spec_from_file_location('corrycleanup_home', ROOT / 'src/modules/corrycleanup/main.py')
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-        self.assertIsNone(module.run())
-        self.assertEqual(calls[-1], ['userdel', '--', 'user'])
-        self.assertFalse(any('--remove' in args or '-r' in args for args in calls))
-        calls.clear()
-        fake.globalstorage.value = lambda key: '/tmp/test-target' if key=='rootMountPoint' else 'user'
-        self.assertIsNone(module.run())
-        self.assertFalse(any(args[0]=='userdel' for args in calls))
-
-    def test_preflight_missing_image(self):
-        spec = importlib.util.spec_from_file_location('preflight', ROOT / 'tools/preflight.py')
-        preflight = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(preflight)
         with tempfile.TemporaryDirectory() as temp:
-            config = Path(temp)
-            (config / 'modules').mkdir()
-            (config / 'settings.conf').write_text('branding: corry\n')
-            (config / 'modules/unpackfs.conf').write_text('unpack:\n- source: /missing/corry.squashfs\n')
-            with patch.object(preflight.shutil, 'which', return_value='/usr/bin/tool') as probe:
-                errors = preflight.check(config)
-            self.assertTrue(all('/usr/sbin' in call.kwargs['path'] for call in probe.call_args_list))
-            self.assertEqual(errors, ['Live system image not found: /missing/corry.squashfs'])
+            fake = fake_calamares({'rootMountPoint': temp, 'username': 'hugo'}, {'liveUser': 'user'}, call)
+            self.assertIsNone(load_module('corrycleanup', fake).run())
+        self.assertIn(['dpkg', '--purge', 'live-config', 'calamares'], calls)
+        self.assertFalse(any('autoremove' in args for args in calls))
+        self.assertIn(['userdel', '--', 'user'], calls)
+        self.assertFalse(any('--remove' in args or '-r' in args for args in calls))
 
-    def load_module(self, name, fake):
-        with patch.dict(sys.modules, {'libcalamares': fake}):
-            spec = importlib.util.spec_from_file_location(name, ROOT / f'src/modules/{name}/main.py')
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-        return module
+    def test_cleanup_keeps_new_user_named_like_live_user(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as temp:
+            fake = fake_calamares({'rootMountPoint': temp, 'username': 'user'}, {'liveUser': 'user'},
+                                  lambda args: calls.append(args) or (1 if args[0] == 'dpkg-query' else 0))
+            self.assertIsNone(load_module('corrycleanup', fake).run())
+        self.assertFalse(any(args[0] == 'userdel' for args in calls))
 
-    def test_cleanup_removes_installer_launchers_from_target(self):
+    def test_cleanup_removes_every_trace_of_corry(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            launchers = ['usr/share/applications/corry-installer.desktop', 'etc/skel/Desktop/corry-installer.desktop',
-                         'home/hugo/Desktop/corry-installer.desktop', 'usr/local/bin/install-debian', 'opt/live-only']
-            for relative in launchers + ['home/hugo/Desktop/notes.txt']:
+            corry = ['usr/share/applications/corry-installer.desktop', 'etc/skel/Desktop/corry-installer.desktop',
+                     'home/hugo/Desktop/corry-installer.desktop', 'usr/local/bin/install-debian',
+                     'etc/calamares/settings.conf', 'etc/calamares/branding/corry/show.qml',
+                     'usr/lib/x86_64-linux-gnu/libcalamares.so.3.3.15', 'usr/share/calamares/qml/x',
+                     'usr/lib/corry/preflight.py', 'usr/bin/calamares', 'opt/live-only']
+            keep = ['home/hugo/Desktop/notes.txt', 'usr/share/applications/firefox.desktop', 'usr/bin/bash']
+            for relative in corry + keep:
                 (root / relative).parent.mkdir(parents=True, exist_ok=True)
                 (root / relative).write_text('x')
-            fake = types.SimpleNamespace(
-                globalstorage=types.SimpleNamespace(value=lambda key: temp if key == 'rootMountPoint' else 'hugo'),
-                job=types.SimpleNamespace(configuration={'liveUser': 'user', 'removeFiles': ['opt/live-only']}),
-                utils=types.SimpleNamespace(target_env_call=lambda args: 1 if args[0] in ('dpkg-query', 'id') else 0))
-            self.assertIsNone(self.load_module('corrycleanup', fake).run())
-            self.assertFalse(any((root / relative).exists() for relative in launchers))
-            self.assertTrue((root / 'home/hugo/Desktop/notes.txt').exists())
+            (root / 'usr/lib/corry/manifest').write_text(
+                '/usr/lib/x86_64-linux-gnu/libcalamares.so.3.3.15\n/usr/share/applications\n/etc/calamares\n')
+            fake = fake_calamares({'rootMountPoint': temp, 'username': 'hugo'},
+                                  {'liveUser': 'user', 'removeFiles': ['opt/live-only']},
+                                  lambda args: 1 if args[0] in ('dpkg-query', 'id') else 0)
+            self.assertIsNone(load_module('corrycleanup', fake).run())
+            self.assertEqual([p for p in corry if (root / p).exists()], [])
+            for directory in ['etc/calamares', 'usr/lib/corry', 'usr/share/calamares']:
+                self.assertFalse((root / directory).exists(), directory)
+            self.assertTrue(all((root / p).exists() for p in keep))
+            self.assertTrue((root / 'usr/share/applications').is_dir())
             fake.job.configuration['removeFiles'] = ['../outside']
-            self.assertIsNotNone(self.load_module('corrycleanup', fake).run())
+            self.assertIsNotNone(load_module('corrycleanup', fake).run())
 
+
+class GrubTests(unittest.TestCase):
     def test_grub_package_selection_and_medium(self):
-        fake = types.SimpleNamespace(globalstorage=types.SimpleNamespace(value=lambda key: None),
-                                     job=types.SimpleNamespace(configuration={}), utils=types.SimpleNamespace())
-        grub = self.load_module('corrygrub', fake)
+        fake = fake_calamares()
+        grub = load_module('corrygrub', fake)
         self.assertEqual(grub.wanted('efi', 'amd64'), ('grub-efi-amd64', 'x86_64-efi'))
         self.assertEqual(grub.wanted('bios', 'amd64'), ('grub-pc', 'i386-pc'))
         self.assertEqual(grub.wanted('bios', 'arm64'), (None, None))
@@ -211,23 +284,91 @@ class ProfileTests(unittest.TestCase):
                 'Package: grub-pc\nStatus: deinstall ok config-files\n\nPackage: grub-pc-bin\nStatus: install ok installed\n')
             self.assertFalse(grub.installed(target, 'grub-pc'))
             self.assertTrue(grub.installed(target, 'grub-pc-bin'))
-            # Without the package on the medium, platform files allow a warning only.
-            warnings = []
-            fake.globalstorage.value = lambda key: {'rootMountPoint': str(target), 'firmwareType': 'bios'}[key]
-            fake.job.configuration = {'medium': str(Path(temp) / 'empty')}
-            fake.utils.warning = warnings.append
             (Path(temp) / 'empty/pool').mkdir(parents=True)
-            with patch.object(grub.subprocess, 'run', return_value=types.SimpleNamespace(stdout='amd64\n', returncode=0)):
-                self.assertIsNotNone(grub.run())
+            values = {'rootMountPoint': str(target), 'firmwareType': 'bios'}
+            fake.globalstorage.value = values.get
+            fake.job.configuration = {'medium': str(Path(temp) / 'empty')}
+            arch = types.SimpleNamespace(stdout='amd64\n', returncode=0)
+            with patch.object(grub.subprocess, 'run', return_value=arch), patch.object(grub, 'online', return_value=False):
+                self.assertIsNotNone(grub.run())  # No package, no GRUB files: stop.
                 (target / 'usr/lib/grub/i386-pc').mkdir(parents=True)
+                self.assertIsNone(grub.run())  # GRUB files present: warn and continue.
+            self.assertIn('grub-pc', fake.log.warnings[-1])
+            # Online fallback uses the target's own sources.
+            calls = []
+            fake.utils.target_env_call = lambda args: calls.append(args) or 0
+            (target / 'etc').mkdir()
+            (target / 'etc/resolv.conf').symlink_to('../run/systemd/resolve/stub-resolv.conf')
+            with patch.object(grub.subprocess, 'run', return_value=arch), patch.object(grub, 'online', return_value=True), \
+                    patch.object(grub.shutil, 'copyfile', side_effect=lambda src, dst: Path(dst).write_text('nameserver 1.1.1.1\n')):
                 self.assertIsNone(grub.run())
-            self.assertIn('grub-pc', warnings[-1])
+            self.assertEqual(calls[-1][-1], 'grub-pc')
+            self.assertTrue((target / 'etc/resolv.conf').is_symlink())
+
+
+class UpdateTests(unittest.TestCase):
+    def run_update(self, online, failing=()):
+        calls = []
+
+        def call(args, stdin='', timeout=0):
+            calls.append(args[2:])
+            return 1 if any(word in args for word in failing) else 0
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'etc').mkdir()
+            (root / 'etc/resolv.conf').write_text('# target\n')
+            fake = fake_calamares({'rootMountPoint': temp}, {'upgrade': 'safe'}, call)
+            update = load_module('corryupdate', fake)
+            with patch.object(update, 'online', return_value=online):
+                self.assertIsNone(update.run())
+            # Temporary files are always restored.
+            self.assertFalse((root / 'usr/sbin/policy-rc.d').exists())
+            self.assertEqual((root / 'etc/resolv.conf').read_text(), '# target\n')
+        return calls, fake.log.warnings
+
+    def test_offline_only_repairs_locally(self):
+        calls, warnings = self.run_update(False)
+        self.assertEqual(calls[0], ['dpkg', '--configure', '-a'])
+        self.assertIn('--no-download', calls[1])
+        self.assertFalse(any(c[:2] == ['apt-get', 'update'] for c in calls))
+        self.assertEqual(warnings, [])
+
+    def test_online_repairs_and_updates(self):
+        calls, warnings = self.run_update(True)
+        commands = [c[:2] for c in calls]
+        self.assertIn(['apt-get', 'update'], commands)
+        self.assertIn(['apt-get', '--fix-broken'], commands)
+        self.assertIn(['apt-get', 'upgrade'], commands)
+        self.assertNotIn(['apt-get', 'full-upgrade'], commands)
+
+    def test_network_problems_never_fail_installation(self):
+        calls, warnings = self.run_update(True, failing=('update',))
+        self.assertFalse(any(c[:2] == ['apt-get', 'upgrade'] for c in calls))
+        self.assertTrue(warnings)
+
+
+class PreflightTests(unittest.TestCase):
+    def preflight(self):
+        spec = importlib.util.spec_from_file_location('preflight', ROOT / 'tools/preflight.py')
+        preflight = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(preflight)
+        return preflight
+
+    def test_preflight_missing_image(self):
+        preflight = self.preflight()
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp)
+            (config / 'modules').mkdir()
+            (config / 'settings.conf').write_text('branding: corry\n')
+            (config / 'modules/unpackfs.conf').write_text('unpack:\n- source: /missing/corry.squashfs\n')
+            with patch.object(preflight.shutil, 'which', return_value='/usr/bin/tool') as probe:
+                errors = preflight.check(config)
+            self.assertTrue(all('/usr/sbin' in call.kwargs['path'] for call in probe.call_args_list))
+            self.assertEqual(errors, ['Live system image not found: /missing/corry.squashfs'])
 
     @unittest.skipUnless(shutil.which('mksquashfs') and shutil.which('unsquashfs'), 'squashfs-tools not installed')
     def test_preflight_checks_image_contents(self):
-        spec = importlib.util.spec_from_file_location('preflight_image', ROOT / 'tools/preflight.py')
-        preflight = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(preflight)
+        preflight = self.preflight()
         with tempfile.TemporaryDirectory() as temp:
             tree = Path(temp) / 'tree'
             for relative in ['boot/vmlinuz-6.12.0-1-amd64', 'usr/sbin/update-initramfs', 'usr/sbin/grub-install',

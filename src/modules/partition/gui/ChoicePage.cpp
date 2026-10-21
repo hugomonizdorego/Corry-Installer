@@ -54,6 +54,9 @@
 #include <QFutureWatcher>
 #include <QLabel>
 #include <QListView>
+#include <QProcess>
+#include <QPushButton>
+#include <QStandardPaths>
 #include <QtConcurrent/QtConcurrent>
 
 using Calamares::Partition::findPartitionByPath;
@@ -110,6 +113,53 @@ ChoicePage::ChoicePage( Config* config, QWidget* parent )
     m_deviceInfoWidget = new DeviceInfoWidget;
     m_drivesLayout->addWidget( m_deviceInfoWidget );
     m_drivesLayout->addStretch();
+
+    // Corry: offer GParted for advanced layouts. Disks are re-read when it
+    // closes, so the choices below always match what GParted left behind.
+    const QString gparted = QStandardPaths::findExecutable( QStringLiteral( "gparted" ) );
+    if ( !gparted.isEmpty() )
+    {
+        auto* gpartedButton = new QPushButton( this );
+        gpartedButton->setObjectName( QStringLiteral( "corryGPartedButton" ) );
+        m_drivesLayout->addWidget( gpartedButton );
+        CALAMARES_RETRANSLATE( gpartedButton->setText( tr( "Open GParted" ) );
+                               gpartedButton->setToolTip( tr( "Edit partitions in GParted. When it closes, the disks are "
+                                                              "scanned again and any unsaved plan here is discarded." ) ); );
+        connect( gpartedButton,
+                 &QPushButton::clicked,
+                 this,
+                 [ this, gpartedButton, gparted ]
+                 {
+                     auto* process = new QProcess( this );
+                     gpartedButton->setEnabled( false );
+                     window()->setEnabled( false );
+                     auto rescan = [ this, gpartedButton, process ]
+                     {
+                         process->deleteLater();
+                         window()->setEnabled( true );
+                         gpartedButton->setEnabled( true );
+                         if ( m_core )
+                         {
+                             ScanningDialog::run(
+                                 QtConcurrent::run( [ this ] { m_core->revert(); } ),
+                                 [ this ] { applyDeviceChoice(); },
+                                 this );
+                         }
+                     };
+                     connect( process, qOverload< int, QProcess::ExitStatus >( &QProcess::finished ), this, rescan );
+                     connect( process,
+                              &QProcess::errorOccurred,
+                              this,
+                              [ rescan ]( QProcess::ProcessError error )
+                              {
+                                  if ( error == QProcess::FailedToStart )
+                                  {
+                                      rescan();
+                                  }
+                              } );
+                     process->start( gparted, {} );
+                 } );
+    }
 
     m_messageLabel->setWordWrap( true );
     m_messageLabel->hide();

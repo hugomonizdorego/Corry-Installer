@@ -5,13 +5,33 @@
     "description": "Corry is setting everything up for you."
   },
   {
-    "image": "work.svg",
+    "image": "debian.svg",
     "title": "Built on Debian",
-    "description": "Stable, secure and free software from Debian stable or Debian testing."
+    "description": "Rock-solid packages from Debian stable, or the newest from Debian testing."
   },
   {
-    "image": "control.svg",
+    "image": "learn.svg",
+    "title": "Ready when you are",
+    "description": "A clean desktop with the tools you need and nothing you do not."
+  },
+  {
+    "image": "update.svg",
+    "title": "Connect for the smoothest install",
+    "description": "With internet, Corry repairs broken packages and installs the latest updates while it works. Without it, everything comes from the installation media."
+  },
+  {
+    "image": "secure.svg",
+    "title": "Safe by design",
+    "description": "Security updates come straight from Debian. Keep a backup of your important files on another disk or in the cloud."
+  },
+  {
+    "image": "community.svg",
+    "title": "You are not alone",
+    "description": "Questions? Visit the support page from the welcome screen, or ask the community."
+  },
+  {
+    "image": "ready.svg",
     "title": "Almost there",
-    "description": "Keep the computer plugged in. Corry will tell you when the installation is complete."
+    "description": "Keep the computer plugged in. Corry will tell you when the installation is complete, then remove itself."
   }
 ]

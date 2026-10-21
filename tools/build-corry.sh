@@ -8,7 +8,7 @@ corry_detect_base
 echo "Building Corry for Debian $corry_base (Qt 6)."
 # Keep only the modules used by the Edukasaun OS and DebION profiles. Extra views
 # remain available in the source and can be enabled deliberately later.
-keep=' welcome locale keyboard partition users summary finished mount unpackfs machineid fstab localecfg displaymanager networkcfg hwclock corrycleanup corrygrub initramfs grubcfg bootloader umount '
+keep=' welcome locale keyboard partition users summary finished mount unpackfs machineid fstab localecfg displaymanager networkcfg hwclock corrycleanup corryupdate corrygrub initramfs grubcfg bootloader umount '
 skip=()
 for path in "$repo"/src/modules/*/; do
  name=$(basename "$path")

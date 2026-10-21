@@ -34,3 +34,6 @@ QScrollBar:vertical { background: transparent; width: 10px; }
 QScrollBar::handle:vertical { background: #d1d5db; border-radius: 5px; min-height: 30px; }
 QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
 QToolTip { color: #ffffff; background: #1d2129; border: none; padding: 7px; }
+/* Summary and other scrolling pages: page background, not the window frame grey. */
+QScrollArea { background: transparent; border: none; }
+QScrollArea > QWidget > QWidget { background: #f6f7f9; }

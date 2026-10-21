@@ -3,12 +3,13 @@
 
 Live images usually ship only the grub-*-bin packages. The installed system also
 needs grub-pc or grub-efi-<arch> so kernel and GRUB updates keep it bootable.
-Packages come from the boot medium's package pool; the network is never used.
+Packages come from the boot medium's package pool. When the pool lacks them
+and the computer is online, the distribution's own repositories are used.
 """
-import os
 from pathlib import Path
 import shutil
 import subprocess
+import urllib.request
 import libcalamares
 
 EFI_PACKAGES = {"amd64": "grub-efi-amd64", "arm64": "grub-efi-arm64", "i386": "grub-efi-ia32"}
@@ -94,6 +95,37 @@ def install_from_medium(root, medium, sources, package):
             pass
 
 
+def online(url):
+    try:
+        with urllib.request.urlopen(url, timeout=10):
+            return True
+    except (OSError, ValueError):
+        return False
+
+
+def install_from_network(root, package):
+    """Use the target's own APT sources; DNS comes from the live session."""
+    resolv = Path(root) / "etc/resolv.conf"
+    backup = resolv.with_name("resolv.conf.corry-backup")
+    if resolv.exists() or resolv.is_symlink():
+        resolv.rename(backup)
+    try:
+        shutil.copyfile("/etc/resolv.conf", resolv)
+        command = ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get"]
+        if libcalamares.utils.target_env_call(command + ["update"]):
+            return "the package lists could not be refreshed"
+        if libcalamares.utils.target_env_call(command + ["-y", "--no-install-recommends", "install", package]):
+            return "apt-get could not download " + package
+        return None
+    except OSError as exc:
+        return str(exc)
+    finally:
+        if resolv.exists() or resolv.is_symlink():
+            resolv.unlink()
+        if backup.exists() or backup.is_symlink():
+            backup.rename(resolv)
+
+
 def run():
     root = libcalamares.globalstorage.value("rootMountPoint")
     if not root or root == "/":
@@ -113,6 +145,12 @@ def run():
         "{} is not in the package pool of the boot medium".format(package)
     if problem is None:
         return None
+    url = libcalamares.job.configuration.get("checkUrl", "http://deb.debian.org/debian/")
+    if online(url):
+        network_problem = install_from_network(root, package)
+        if network_problem is None:
+            return None
+        problem += "; online: " + network_problem
     # grub-install only needs the platform files. Without the package the system
     # still boots, but GRUB is not updated automatically. Warn instead of failing.
     if (Path(root) / "usr/lib/grub" / platform).is_dir():

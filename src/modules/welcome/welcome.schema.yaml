@@ -12,6 +12,9 @@ properties:
     showReleaseNotesUrl: { anyOf: [ { type: boolean, default: true }, { type: string } ] }
     showDonateUrl: { anyOf: [ { type: boolean, default: true }, { type: string } ] }
 
+    # Corry: split the welcome step into a greeting page and a system-check page.
+    corryPage: { type: string, enum: [ greeting, check ] }
+
     requirements:
         additionalProperties: false
         type: object
