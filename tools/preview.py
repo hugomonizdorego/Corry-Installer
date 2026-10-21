@@ -17,13 +17,16 @@ from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtQml import QQmlComponent
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QComboBox, QLineEdit, QFormLayout, QTreeWidget, QTreeWidgetItem,
-    QHeaderView, QFrame, QProgressBar, QDialog, QDialogButtonBox, QSpinBox, QGridLayout, QCheckBox, QMessageBox)
+    QHeaderView, QFrame, QProgressBar, QDialog, QDialogButtonBox, QSpinBox, QGridLayout, QCheckBox, QMessageBox, QRadioButton)
 
 ROOT = Path(__file__).resolve().parents[1]
 BRAND = ROOT / 'src/branding/corry'
+from branding import compile_brand
 PRODUCT = 'DebION GNU/Linux'
-ACCENT = '#6445a4'
-TINT = '#f0ecf8'
+ACCENT = '#08786f'
+TINT = '#e6f4f1'
+CONTENT = {}
+CATALOG = {}
 
 
 class Steps(QAbstractListModel):
@@ -50,7 +53,7 @@ class Brand(QObject):
     @Property(int, constant=True)
     def ProductLogo(self): return 1
     @Slot(int, result=str)
-    def imagePath(self, value): return str(BRAND / 'corry-mark.svg')
+    def imagePath(self, value): return str(BRAND / CONTENT['product']['logo'])
 
 
 class Debug(QObject):
@@ -73,11 +76,12 @@ class Preview(QWidget):
                      ['/dev/vda2', '72 GiB', 'Btrfs', '/', 'Format'],
                      ['/dev/vda3', '4 GiB', 'Swap', '—', 'Format'],
                      ['Free space', '51.5 GiB', '—', '—', 'Available']]
-        self.steps = Steps(); self.brand = Brand(); self.debug = Debug()
+        self.steps = Steps(); self.brand = Brand(); self.debug = Debug(); self.media = None; self.slide = None; self.installing = False; self.software = set()
         outer = QVBoxLayout(self); outer.setContentsMargins(0,0,0,0); outer.setSpacing(0)
         self.sidebar = QQuickWidget(); self.sidebar.setFixedHeight(112)
         self.sidebar.setResizeMode(QQuickWidget.SizeRootObjectToView)
         ctx = self.sidebar.rootContext()
+        ctx.setContextProperty('corryQtMajorVersion', 6)
         ctx.setContextProperty('ViewManager', self.steps); ctx.setContextProperty('Branding', self.brand); ctx.setContextProperty('debug', self.debug)
         source = (BRAND / 'calamares-sidebar.qml').read_text()
         source = '\n'.join(line for line in source.splitlines() if not line.startswith('import io.calamares.'))
@@ -93,10 +97,19 @@ class Preview(QWidget):
         self.foot = label('Preview only. No disk is read or changed.',9,color='#526a7b'); right.addWidget(self.foot)
         nav=QHBoxLayout(); self.cancel=QPushButton('Close preview');self.cancel.clicked.connect(self.close);nav.addWidget(self.cancel);nav.addStretch()
         self.back=QPushButton('Back');self.back.setObjectName('view-button-back');self.back.clicked.connect(lambda:self.show_step(self.steps.step-1));nav.addWidget(self.back)
-        self.next=QPushButton('Next  →');self.next.setObjectName('view-button-next');self.next.clicked.connect(lambda:self.show_step(self.steps.step+1));nav.addWidget(self.next);right.addLayout(nav)
+        self.next=QPushButton('Next  →');self.next.setObjectName('view-button-next');self.next.clicked.connect(self.advance);nav.addWidget(self.next);right.addLayout(nav)
         self.show_step(0)
 
+    def advance(self):
+        if self.installing:self.show_step(7)
+        elif self.steps.step==6:self.show_slideshow()
+        elif self.steps.step==7:self.close()
+        else:self.show_step(self.steps.step+1)
+
     def clear(self):
+        for media in (self.media,self.slide):
+            if media and media.rootObject():media.rootObject().onLeave()
+        self.media=None;self.slide=None;self.installing=False
         def discard(layout):
             while layout.count():
                 item=layout.takeAt(0)
@@ -111,17 +124,21 @@ class Preview(QWidget):
         self.layout.addWidget(label(title,26,True));self.layout.addWidget(label(subtitle,11,color='#526a7b'))
 
     def show_step(self, step):
-        step=max(0,min(step,7));self.steps.go(step);self.clear();self.back.setEnabled(step>0);self.next.setText('Next  →' if step<6 else 'Finish preview')
+        step=max(0,min(step,7));self.steps.go(step);self.clear();self.back.setEnabled(step>0);self.next.setText('Next  →' if step<6 else 'Simulate installation' if step==6 else 'Close preview')
         if step==0:
             hero=QHBoxLayout(); hero.setSpacing(30)
             text=QVBoxLayout(); text.setSpacing(18)
             text.addWidget(label('SELAMAT DATANG',10,True,color=ACCENT))
-            text.addWidget(label('Mulai perjalanan\nbaru Anda.',32,True))
-            text.addWidget(label('Pasang '+PRODUCT+' dengan panduan yang jelas, satu langkah setiap saat.',13,color='#74717c'))
+            text.addWidget(label(CONTENT['welcome']['title'],30,True))
+            text.addWidget(label(CONTENT['welcome']['description'],13,color='#526970'))
             form=QFormLayout();self.lang=QComboBox();self.lang.addItems(['Bahasa Indonesia','English','Português']);form.addRow('Bahasa',self.lang);text.addLayout(form)
             text.addWidget(label('Preferensi  →  Disk & akun  →  Tinjau & pasang',10,True));text.addStretch()
             hero.addLayout(text,1)
-            art=QLabel();art.setPixmap(QPixmap(str(BRAND/'slides/welcome.svg')).scaled(520,320,Qt.KeepAspectRatio,Qt.SmoothTransformation));art.setAlignment(Qt.AlignCenter);hero.addWidget(art,1)
+            self.media=QQuickWidget(self.sidebar.engine(),self.page);self.media.setResizeMode(QQuickWidget.SizeRootObjectToView)
+            self.media.setMinimumSize(450,310);self.media.setMaximumHeight(350)
+            self.media.setSource(QUrl.fromLocalFile(str(BRAND/'WelcomeMedia.qml')))
+            if self.media.status()==QQuickWidget.Error:raise RuntimeError(str(self.media.errors()))
+            hero.addWidget(self.media,1)
             self.layout.addLayout(hero,1)
             card=QFrame();card.setObjectName('corryCard');cl=QVBoxLayout(card);cl.setContentsMargins(20,16,20,16)
             cl.addWidget(label('Anda memegang kendali.',13,True));cl.addWidget(label('Btrfs sebagai pilihan awal. Paket tambahan bersifat opsional. Semua perubahan disk ditampilkan untuk ditinjau sebelum instalasi.',11,color='#74717c'));self.layout.addWidget(card)
@@ -137,8 +154,12 @@ class Preview(QWidget):
             self.title('Aplikasi pilihan Anda.', 'Klik untuk memilih paket tambahan. Klik lagi untuk membatalkan. Sistem dasar dapat dipasang offline jika image lengkap.')
             card=QFrame();card.setObjectName('corryCard');row=QHBoxLayout(card);row.setContentsMargins(18,14,18,14)
             row.addWidget(label('✓  Repositori bertanda tangan dapat diakses\nPaket dan dependensinya akan diunduh sebelum partisi diubah.',11,color=ACCENT),1);row.addWidget(QPushButton('Periksa lagi'));self.layout.addWidget(card)
-            for title,description in [('Kantor & dokumen','LibreOffice Writer dan Calc'),('Audio & video','VLC media player'),('Alat pengembangan','Git dan perangkat build Debian')]:
-                box=QCheckBox(title+'   ·   '+description);box.setChecked(title=='Kantor & dokumen');self.layout.addWidget(box)
+            for group in CATALOG['groups']:
+                box=QCheckBox(group.get('name[id]',group['name'])+'   ·   '+', '.join(group['packages']))
+                box.setChecked(group['id'] in self.software)
+                box.toggled.connect(lambda selected,g=group['id']: self.software.add(g) if selected else self.software.discard(g))
+                self.layout.addWidget(box)
+            skip=QPushButton('Tanpa software tambahan');skip.clicked.connect(self.skip_software);self.layout.addWidget(skip)
             self.layout.addWidget(label('SIMULASI STATUS REPOSITORI · Pratinjau ini tidak melakukan koneksi atau mengunduh paket.',9,color='#74717c'))
         elif step==4:
             self.title('Give your system a place.', 'Choose a disk, then create or select partitions and assign their roles.')
@@ -165,14 +186,22 @@ class Preview(QWidget):
             self.title('One last look.', 'Check your choices carefully before starting a real installation.')
             self.layout.addWidget(label('Location     Asia / Dili\nKeyboard     English (US)\nDisk              /dev/vda · sample virtual disk\nFilesystem   Btrfs, with FAT32 for EFI',12))
             self.layout.addWidget(label('The native installer shows the full operation list and asks for confirmation before writing changes.',11,True))
-            self.layout.addWidget(label('This preview stops here and cannot start an installation.',10,color='#526a7b'))
+            chosen=', '.join(group['name'] for group in CATALOG['groups'] if group['id'] in self.software) or 'None'
+            self.layout.addWidget(label('Additional software: '+chosen,11))
+            self.layout.addWidget(label('Simulation only. The next page demonstrates the slideshow and music controls.',10,color='#526a7b'))
         else:
-            self.title('Ready for the next stage.', 'The Corry design preview is complete. Native installation must be tested in a virtual machine.')
-            self.next.setEnabled(False)
+            self.title(CONTENT['finish']['title'],CONTENT['finish']['description'])
+            self.continue_live=QRadioButton(CONTENT['finish']['continueLive']);self.continue_live.setChecked(True)
+            self.restart=QRadioButton(CONTENT['finish']['restart'])
+            self.layout.addWidget(self.continue_live);self.layout.addWidget(self.restart)
+            self.layout.addWidget(label('SIMULASI SELESAI · Tidak ada sistem yang dipasang atau komputer yang dimulai ulang.',10,color='#526970'))
         self.layout.addStretch()
 
+    def skip_software(self):
+        self.software.clear();self.show_step(3)
+
     def show_slideshow(self):
-        self.clear();self.steps.go(6)
+        self.clear();self.steps.go(6);self.installing=True
         self.slide=QQuickWidget(self.sidebar.engine(), self.page);self.slide.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self.slide.setSource(QUrl.fromLocalFile(str(BRAND/'show.qml')))
         if self.slide.status()==QQuickWidget.Error:raise RuntimeError(str(self.slide.errors()))
@@ -180,7 +209,12 @@ class Preview(QWidget):
         self.progress=QProgressBar();self.progress.setValue(46);self.layout.addWidget(self.progress)
         self.layout.addWidget(label('Memasang sistem · contoh progres, tidak ada disk yang diubah',10,color='#74717c'))
         self.slide.rootObject().onActivate()
-        self.next.setEnabled(False)
+        self.next.setEnabled(True);self.next.setText('Finish simulation')
+
+    def closeEvent(self,event):
+        for media in (self.media,self.slide):
+            if media and media.rootObject():media.rootObject().onLeave()
+        event.accept()
 
     def fill_tree(self):
         self.tree.clear()
@@ -240,40 +274,62 @@ class Preview(QWidget):
 
 
 def main():
-    global BRAND, PRODUCT, ACCENT, TINT, PREVIEW_APP, PREVIEW_WINDOW
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--screenshots',type=Path);parser.add_argument('--distro',choices=['edukasaun','debion'],default='debion');args=parser.parse_args()
+    global BRAND, PRODUCT, ACCENT, TINT, CONTENT, CATALOG, PREVIEW_APP, PREVIEW_WINDOW
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--screenshots',type=Path)
+    parser.add_argument('--distro',choices=['edukasaun','debion'],default='debion')
+    parser.add_argument('--branding',type=Path)
+    args=parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='corry-preview-') as temp:
-        BRAND=Path(temp)/'corry';shutil.copytree(ROOT/'src/branding/corry',BRAND)
-        overlay=ROOT/'config/distros'/args.distro
-        shutil.rmtree(BRAND/'slides');shutil.copytree(overlay/'slides',BRAND/'slides')
-        profile=yaml.safe_load((overlay/'profile.yaml').read_text());PRODUCT=profile['name'];ACCENT=profile['accent'];TINT=profile['tint']
-        mark=BRAND/'corry-mark.svg';mark.write_text(mark.read_text().replace('#6445a4',ACCENT))
-        app=QApplication(sys.argv[:1]);app.setStyle('Fusion');app.setFont(QFont('DejaVu Sans',10));app.setStyleSheet((BRAND/'stylesheet.qss').read_text().replace('#6445a4',ACCENT).replace('#f0ecf8',TINT))
+        BRAND=Path(temp)/'corry';overlay=args.branding or ROOT/'config/distros'/args.distro
+        CONTENT=compile_brand(overlay,BRAND)
+        catalog=overlay/'software.yaml'
+        CATALOG=yaml.safe_load((catalog if catalog.is_file() else ROOT/'config/corry/software.yaml').read_text())
+        PRODUCT=CONTENT['product']['name'];ACCENT=CONTENT['palette']['accent'];TINT=CONTENT['palette']['tint']
+        app=QApplication(sys.argv[:1]);app.setStyle('Fusion');app.setFont(QFont('DejaVu Sans',10));app.setStyleSheet((BRAND/'stylesheet.qss').read_text())
         window=Preview();window.show()
         PREVIEW_APP=app;PREVIEW_WINDOW=window
+        failures=[]
         if args.screenshots:
             args.screenshots.mkdir(parents=True,exist_ok=True)
-            def capture():
-                captures=[(0,'welcome')]
-                if args.distro=='debion':captures.extend([(3,'software'),(4,'partitions'),(5,'account')])
-                for step,name in captures:
-                    window.show_step(step);app.processEvents()
+            stages=[(0,'welcome'),(1,'location'),(2,'keyboard'),(3,'software'),(4,'partitions'),(5,'account'),(6,'review'),(None,'installation'),(7,'finish')]
+            def capture(index=0):
+                try:
+                    if index==len(stages):
+                        window.close();app.quit();return
+                    step,name=stages[index]
+                    if step is None:
+                        window.show_slideshow();window.slide.rootObject().advance(1)
+                    else:window.show_step(step)
+                    if step==0:
+                        assert window.media.status()==QQuickWidget.Ready
+                    if step==3:
+                        assert not window.software
+                        boxes=window.page.findChildren(QCheckBox)
+                        boxes[0].click();assert window.software
+                        boxes[0].click();assert not window.software
+                        boxes[0].click() # Explicit example choice, never a production default.
                     if step==5:
                         window.password.setText('a');window.repeat.setText('a');assert window.next.isEnabled()
                         window.repeat.setText('b');assert not window.next.isEnabled()
                         window.repeat.setText('a')
-                    if step in [3,5]:
-                        assert not any(item.isVisible() for item in window.page.findChildren(QComboBox))
-                    app.processEvents();window.grab().save(str(args.screenshots/(args.distro+'-'+name+'.png')))
-                window.show_slideshow();app.processEvents()
-                slide=window.slide.rootObject();assert slide.property('active')
-                slide.advance(1);assert slide.property('currentSlide')==1
-                slide.onLeave();assert not slide.property('active');slide.onActivate()
-                def capture_slide():
-                    window.grab().save(str(args.screenshots/(args.distro+'-slideshow.png')));slide.onLeave();window.close();app.quit()
-                QTimer.singleShot(300,capture_slide)
+                    if step==7:
+                        assert window.continue_live.isChecked()
+                        window.restart.click();assert window.restart.isChecked() and not window.continue_live.isChecked()
+                        window.continue_live.click();assert not window.restart.isChecked()
+                    def save():
+                        try:
+                            assert window.grab().save(str(args.screenshots/(str(index+1).zfill(2)+'-'+name+'.png')))
+                            if step is None:
+                                slide=window.slide.rootObject();slide.advance(1);assert slide.property('currentSlide')==2
+                                slide.onLeave();assert not slide.property('active')
+                            QTimer.singleShot(30,lambda:capture(index+1))
+                        except Exception as exc:failures.append(exc);app.quit()
+                    QTimer.singleShot(400,save)
+                except Exception as exc:failures.append(exc);app.quit()
             QTimer.singleShot(300,capture)
         result=app.exec()
+        if failures:raise failures[0]
         return result
 
 

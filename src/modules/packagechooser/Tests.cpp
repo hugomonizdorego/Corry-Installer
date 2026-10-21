@@ -22,6 +22,7 @@
 
 #include <QtTest/QtTest>
 #include <QListView>
+#include <QPushButton>
 
 QTEST_MAIN( PackageChooserTests )
 
@@ -41,6 +42,7 @@ PackageChooserTests::testCorryClickSelection()
     PackageListModel model( nullptr );
     model.addPackage( PackageItem( "office", "Office", "Documents" ) );
     model.addPackage( PackageItem( "media", "Media", "Audio and video" ) );
+    model.addPackage( PackageItem( "", "Introduction", "Choose software" ) );
     PackageChooserPage page( PackageChooserMode::OptionalMultiple );
     page.setModel( &model );
     QVERIFY( page.repositoriesReady() );
@@ -49,6 +51,7 @@ PackageChooserTests::testCorryClickSelection()
     auto* list = page.findChild< QListView* >( "products" );
     QVERIFY( list );
     QCOMPARE( list->selectionMode(), QAbstractItemView::MultiSelection );
+    QVERIFY( list->isRowHidden( 2 ) );
     page.resize( 800, 500 );
     page.show();
     // A plain click toggles each choice; Ctrl/Shift is unnecessary.
@@ -60,6 +63,10 @@ PackageChooserTests::testCorryClickSelection()
     QTest::mouseClick( list->viewport(), Qt::LeftButton, Qt::NoModifier,
                        list->visualRect( model.index( 0, 0 ) ).center() );
     QCOMPARE( page.selectedPackageIds(), QStringList { "media" } );
+    auto* skip = page.findChild< QPushButton* >( "corrySkipSoftware" );
+    QVERIFY( skip );
+    skip->click();
+    QVERIFY( page.selectedPackageIds().isEmpty() );
 }
 
 void

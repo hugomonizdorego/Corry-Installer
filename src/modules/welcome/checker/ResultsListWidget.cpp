@@ -89,7 +89,8 @@ ResultsListWidget::requirementsComplete()
         delete m_centralWidget;
         m_centralWidget = nullptr;
 
-        if ( !Calamares::Branding::instance()->imagePath( Calamares::Branding::ProductWelcome ).isEmpty() )
+        if ( Calamares::Branding::instance()->componentName() != QStringLiteral( "corry" )
+             && !Calamares::Branding::instance()->imagePath( Calamares::Branding::ProductWelcome ).isEmpty() )
         {
             QPixmap theImage
                 = QPixmap( Calamares::Branding::instance()->imagePath( Calamares::Branding::ProductWelcome ) );

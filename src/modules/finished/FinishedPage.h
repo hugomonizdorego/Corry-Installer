@@ -13,10 +13,12 @@
 
 
 #include <QWidget>
+#include <QVariantMap>
 
 #include <optional>
 
 class Config;
+class QRadioButton;
 namespace Ui
 {
 class FinishedPage;
@@ -27,6 +29,7 @@ class FinishedPage : public QWidget
     Q_OBJECT
 public:
     explicit FinishedPage( Config* config, QWidget* parent = nullptr );
+    void setConfigurationMap( const QVariantMap& configuration );
 
 
 public slots:
@@ -39,6 +42,11 @@ protected:
 private:
     Ui::FinishedPage* ui;
     std::optional< QString > m_failure;
+    Config* m_config;
+    QWidget* m_corryOptions = nullptr;
+    QRadioButton* m_continueLive = nullptr;
+    QRadioButton* m_restart = nullptr;
+    QVariantMap m_corryContent;
 };
 
 #endif  // FINISHEDPAGE_H

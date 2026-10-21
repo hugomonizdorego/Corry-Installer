@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: CC0-1.0
+# Edit teks dan nama file di sini. Semua path relatif terhadap folder ini.
+product:
+  name: DebION GNU/Linux
+  logo: images/logo.svg
+  url: https://github.com/hugomonizdorego/Corry-Installer
+  supportUrl: https://github.com/hugomonizdorego/Corry-Installer/issues
+palette:
+  accent: '#08786f'
+  hover: '#075e57'
+  tint: '#e6f4f1'
+  soft: '#9fcfc5'
+welcome:
+  title: Mulai perjalanan baru Anda.
+  description: Pasang {product} dengan panduan yang jelas, satu langkah setiap saat.
+  image: images/welcome.svg
+  video: video/welcome.webm
+  videoAutoplay: false
+  videoMuted: true
+installation:
+  eyebrow: MENYIAPKAN SISTEM ANDA
+  music: music/installation.ogg
+  musicEnabled: true
+  musicVolume: 20
+  slideInterval: 9000
+  slides:
+  - image: images/welcome.svg
+    title: Selamat datang di DebION GNU/Linux
+    description: Sistem Anda. Pilihan Anda.
+  - image: images/work.svg
+    title: Belajar. Buat. Bagikan.
+    description: Aplikasi pilihan Anda sedang disiapkan.
+  - image: images/control.svg
+    title: Siap untuk langkah berikutnya
+    description: Simpan komputer tetap terhubung ke sumber listrik.
+finish:
+  title: Instalasi selesai.
+  description: '{product} siap digunakan. Pilih untuk memulai ulang atau tetap mencoba
+    sesi live.'
+  continueLive: Tetap mencoba sesi live
+  restart: Mulai ulang ke sistem terpasang setelah menekan Selesai

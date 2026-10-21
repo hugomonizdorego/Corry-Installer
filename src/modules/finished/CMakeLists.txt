@@ -20,3 +20,8 @@ calamares_add_plugin(finished
         ${qtname}::DBus
     SHARED_LIB
 )
+
+calamares_add_test(corryfinishedtest
+    SOURCES Config.cpp CorryFinishedTests.cpp
+    LIBRARIES ${qtname}::DBus ${qtname}::Widgets Calamares::calamaresui
+)

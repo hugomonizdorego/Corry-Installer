@@ -1,0 +1,2 @@
+// SPDX-License-Identifier: CC0-1.0
+var config = {"palette": {"accent": "#08786f", "hover": "#075e57", "tint": "#e6f4f1", "soft": "#9fcfc5"}, "welcome": {"image": "welcome.svg", "video": "", "videoMuted": true, "videoAutoplay": false}, "installation": {"eyebrow": "YOUR NEXT DESKTOP", "slides": [{"image": "welcome.svg", "title": "Your system is taking shape", "description": "Keep your computer connected to power."}], "music": "", "musicEnabled": false, "musicVolume": 20, "slideInterval": 9000}};

@@ -20,6 +20,23 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QTimer>
+#include <QStyledItemDelegate>
+#include <QApplication>
+
+class CorrySoftwareDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    void paint( QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index ) const override
+    {
+        QStyleOptionViewItem choice( option );
+        initStyleOption( &choice, index );
+        choice.features |= QStyleOptionViewItem::HasCheckIndicator;
+        choice.checkState = ( option.state & QStyle::State_Selected ) ? Qt::Checked : Qt::Unchecked;
+        const auto* style = option.widget ? option.widget->style() : QApplication::style();
+        style->drawControl( QStyle::CE_ItemViewItem, &choice, painter, option.widget );
+    }
+};
 
 PackageChooserPage::PackageChooserPage( PackageChooserMode mode, QWidget* parent )
     : QWidget( parent )
@@ -59,6 +76,9 @@ PackageChooserPage::enableCorryRepositoryCheck()
     }
     m_corryCheck = true;
     ui->products->setSelectionMode( QAbstractItemView::MultiSelection );
+    ui->products->setItemDelegate( new CorrySoftwareDelegate( ui->products ) );
+    ui->products->setAccessibleDescription( tr( "Click an application group to select it. Click again to deselect it." ) );
+    updateCorryChoices();
     auto* panel = new QWidget( this );
     auto* row = new QHBoxLayout( panel );
     auto* status = new QLabel( tr( "Checking internet and signed repositories…" ), panel );
@@ -67,6 +87,12 @@ PackageChooserPage::enableCorryRepositoryCheck()
     auto* retry = new QPushButton( tr( "Check again" ), panel );
     row->addWidget( status, 1 );
     row->addWidget( retry );
+    auto* skip = new QPushButton( tr( "Skip additional software" ), panel );
+    skip->setObjectName( "corrySkipSoftware" );
+    row->addWidget( skip );
+    connect( skip, &QPushButton::clicked, this, [ this ]() {
+        if ( ui->products->selectionModel() ) { ui->products->selectionModel()->clearSelection(); }
+    } );
     qobject_cast< QBoxLayout* >( layout() )->insertWidget( 0, panel );
     auto* process = new QProcess( this );
     auto* timeout = new QTimer( process );
@@ -104,6 +130,16 @@ PackageChooserPage::enableCorryRepositoryCheck()
         emit selectionChanged();
     } );
     QTimer::singleShot( 0, retry, &QPushButton::click );
+}
+
+void PackageChooserPage::updateCorryChoices()
+{
+    if ( !m_corryCheck || !ui->products->model() ) { return; }
+    const auto* model = ui->products->model();
+    for ( int row = 0; row < model->rowCount(); ++row )
+    {
+        ui->products->setRowHidden( row, model->index( row, 0 ).data( PackageListModel::IdRole ).toString().isEmpty() );
+    }
 }
 
 void
@@ -152,6 +188,7 @@ void
 PackageChooserPage::setModel( QAbstractItemModel* model )
 {
     ui->products->setModel( model );
+    updateCorryChoices();
     currentChanged( QModelIndex() );
     connect( ui->products->selectionModel(),
              &QItemSelectionModel::selectionChanged,
