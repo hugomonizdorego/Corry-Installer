@@ -57,6 +57,24 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(calls[-1], ['dpkg', '--purge', 'live-config'])
         self.assertFalse(any('autoremove' in args for args in calls))
 
+    def test_cleanup_preserves_existing_home(self):
+        calls = []
+        fake = types.SimpleNamespace(
+            globalstorage=types.SimpleNamespace(value=lambda key: '/tmp/test-target' if key=='rootMountPoint' else 'hugo'),
+            job=types.SimpleNamespace(configuration={'liveUser': 'user'}),
+            utils=types.SimpleNamespace(target_env_call=lambda args: calls.append(args) or (1 if args[0]=='dpkg-query' else 0)))
+        with patch.dict(sys.modules, {'libcalamares': fake}):
+            spec = importlib.util.spec_from_file_location('corrycleanup_home', ROOT / 'src/modules/corrycleanup/main.py')
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        self.assertIsNone(module.run())
+        self.assertEqual(calls[-1], ['userdel', '--', 'user'])
+        self.assertFalse(any('--remove' in args or '-r' in args for args in calls))
+        calls.clear()
+        fake.globalstorage.value = lambda key: '/tmp/test-target' if key=='rootMountPoint' else 'user'
+        self.assertIsNone(module.run())
+        self.assertFalse(any(args[0]=='userdel' for args in calls))
+
     def test_preflight_missing_image(self):
         spec = importlib.util.spec_from_file_location('preflight', ROOT / 'tools/preflight.py')
         preflight = importlib.util.module_from_spec(spec)

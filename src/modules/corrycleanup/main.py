@@ -32,7 +32,9 @@ def run():
         if not re.fullmatch(r"[a-z_][a-z0-9_-]*", live_user) or live_user == "root":
             return ("Invalid live username", "Set corrycleanup.liveUser to the live image account.")
         if libcalamares.utils.target_env_call(["id", "-u", live_user]) == 0:
-            code = libcalamares.utils.target_env_call(["userdel", "--remove", "--", live_user])
+            # A preserved /home partition may contain a real user's directory
+            # with the same name as the live account. Remove the account only.
+            code = libcalamares.utils.target_env_call(["userdel", "--", live_user])
             if code:
                 return ("Could not remove the live account", "Target userdel returned error {}.".format(code))
     return None

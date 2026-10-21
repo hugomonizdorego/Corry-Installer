@@ -58,7 +58,8 @@ salinan konfigurasi sebelumnya dan mendukung `DESTDIR` untuk staging. Isi profil
 Pastikan `config/corry/modules/corrycleanup.conf` memakai nama akun live ISO yang tepat
 (default Debian live-build: `user`). Modul cleanup hanya menghapus paket live dari target,
 tanpa `apt autoremove` atau akses jaringan. Akun live yang berbeda dari akun baru juga
-dihapus dari target. Ini berlangsung sebelum regenerasi initramfs agar diversion paket
+dihapus dari target tanpa menghapus direktori home yang mungkin dipertahankan dari
+partisi lama. Ini berlangsung sebelum regenerasi initramfs agar diversion paket
 live tidak menghambat `update-initramfs`.
 
 Profil memakai grup `sudo` bawaan Debian dan menonaktifkan password root terpisah.
