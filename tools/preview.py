@@ -97,13 +97,14 @@ class Preview(QWidget):
         self.show_step(0)
 
     def clear(self):
-        while self.layout.count():
-            item=self.layout.takeAt(0)
-            if item.widget(): item.widget().hide(); item.widget().deleteLater()
-            elif item.layout():
-                while item.layout().count():
-                    child=item.layout().takeAt(0)
-                    if child.widget():child.widget().hide();child.widget().deleteLater()
+        def discard(layout):
+            while layout.count():
+                item=layout.takeAt(0)
+                if item.widget():
+                    item.widget().hide();item.widget().deleteLater()
+                elif item.layout():
+                    nested=item.layout();discard(nested);nested.deleteLater()
+        discard(self.layout)
         self.next.setEnabled(True)
 
     def title(self, title, subtitle):
@@ -261,6 +262,8 @@ def main():
                         window.password.setText('a');window.repeat.setText('a');assert window.next.isEnabled()
                         window.repeat.setText('b');assert not window.next.isEnabled()
                         window.repeat.setText('a')
+                    if step in [3,5]:
+                        assert not any(item.isVisible() for item in window.page.findChildren(QComboBox))
                     app.processEvents();window.grab().save(str(args.screenshots/(args.distro+'-'+name+'.png')))
                 window.show_slideshow();app.processEvents()
                 slide=window.slide.rootObject();assert slide.property('active')
