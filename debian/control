@@ -1,0 +1,122 @@
+Source: corry
+Section: admin
+Priority: optional
+Maintainer: Hugo Moniz do Rego <hugomonizdorego@angelinojoana.com>
+Build-Depends: debhelper-compat (= 13),
+               cmake,
+               ninja-build,
+               extra-cmake-modules,
+               pkgconf,
+               gettext,
+               libyaml-cpp-dev,
+               libicu-dev,
+               libpwquality-dev,
+               libcrypt-dev,
+               libkpmcore-dev,
+               libparted-dev,
+               python3-dev,
+               python3-yaml,
+               python3-jsonschema,
+               squashfs-tools,
+               qt6-base-dev,
+               qt6-declarative-dev,
+               qt6-tools-dev,
+               qt6-tools-dev-tools,
+               qt6-l10n-tools,
+               qt6-svg-dev,
+               libpolkit-qt6-1-dev,
+               libkf6coreaddons-dev,
+               libkf6config-dev,
+               libkf6i18n-dev,
+               libkf6service-dev,
+               libkf6package-dev,
+               libkf6widgetsaddons-dev,
+               qml6-module-qtquick,
+               qml6-module-qtquick-layouts,
+               qml6-module-qtquick-controls,
+               qml6-module-qtquick-templates,
+               qml6-module-qtquick-window,
+               qml6-module-qtqml-workerscript
+Standards-Version: 4.7.0
+Homepage: https://github.com/hugomonizdorego/Corry-Installer
+Vcs-Git: https://github.com/hugomonizdorego/Corry-Installer.git
+Rules-Requires-Root: no
+
+Package: corry
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         corry-edukasaun (= ${source:Version}) | corry-debion (= ${source:Version}) | corry-profile,
+         python3,
+         python3-yaml,
+         polkitd,
+         pkexec,
+         sudo,
+         zenity,
+         xdg-user-dirs,
+         kmod,
+         parted,
+         rsync,
+         squashfs-tools,
+         btrfs-progs,
+         e2fsprogs,
+         xfsprogs,
+         dosfstools,
+         cryptsetup,
+         lvm2,
+         os-prober,
+         efibootmgr,
+         grub2-common,
+         initramfs-tools,
+         locales,
+         tzdata,
+         keyboard-configuration,
+         qml6-module-qtquick,
+         qml6-module-qtquick-layouts,
+         qml6-module-qtquick-controls,
+         qml6-module-qtquick-templates,
+         qml6-module-qtquick-window,
+         qml6-module-qtqml-workerscript
+Recommends: gparted,
+            qml6-module-qtmultimedia,
+            libqt6multimedia6,
+            fonts-noto-core,
+            grub-pc-bin [amd64 i386],
+            grub-efi-amd64-bin [amd64],
+            grub-efi-arm64-bin [arm64],
+            grub-efi-ia32-bin [i386]
+Conflicts: calamares, calamares-settings-debian
+Replaces: calamares, calamares-settings-debian
+Provides: calamares
+Description: guided system installer for Edukasaun OS and DebION GNU/Linux
+ Corry installs Edukasaun OS or DebION GNU/Linux from a live session, step by
+ step: welcome, system check, location, keyboard, partitions (including
+ GParted), users, installation with a slideshow and music, and finish. It
+ works with and without internet and removes itself from the installed
+ system.
+ .
+ Corry is based on Calamares 3.3.15 and replaces Debian's calamares and
+ calamares-settings-debian packages; what is left of them is purged
+ automatically.
+
+Package: corry-edukasaun
+Architecture: all
+Depends: ${misc:Depends}, corry (>= ${source:Version})
+Conflicts: corry-profile, calamares-settings-debian
+Replaces: corry-profile, calamares-settings-debian
+Provides: corry-profile
+Description: Corry installer profile for Edukasaun OS
+ Branding (names, colors, slides, video and music) and installer settings for
+ Edukasaun OS. Makes Corry the default installer of the live session: menu
+ entry, desktop icon for the live user and the install-debian command.
+
+Package: corry-debion
+Architecture: all
+Depends: ${misc:Depends}, corry (>= ${source:Version})
+Conflicts: corry-profile, calamares-settings-debian
+Replaces: corry-profile, calamares-settings-debian
+Provides: corry-profile
+Description: Corry installer profile for DebION GNU/Linux
+ Branding (names, colors, slides, video and music) and installer settings for
+ DebION GNU/Linux. Makes Corry the default installer of the live session:
+ menu entry, desktop icon for the live user and the install-debian command.

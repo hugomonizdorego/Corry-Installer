@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
   push:
     branches: ['claude/**', 'codex/**']
-    paths: ['src/**', 'config/**', 'tools/**', 'settings.conf', '.github/workflows/corry.yml']
+    paths: ['src/**', 'config/**', 'tools/**', 'debian/**', 'settings.conf', 'VERSION', 'CMakeLists.txt', '.github/workflows/corry.yml']
   pull_request:
-    paths: ['src/**', 'config/**', 'tools/**', 'settings.conf', '.github/workflows/corry.yml']
+    paths: ['src/**', 'config/**', 'tools/**', 'debian/**', 'settings.conf', 'VERSION', 'CMakeLists.txt', '.github/workflows/corry.yml']
 permissions:
   contents: read
 jobs:
-  build:
+  package:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -19,36 +19,55 @@ jobs:
         debian: ['stable', 'testing']
     container: debian:${{ matrix.debian }}
     env:
-      CORRY_BUILD_TYPE: Debug
-      CORRY_DEBIAN_BASE: ${{ matrix.debian }}
+      DEBIAN_FRONTEND: noninteractive
     steps:
       - run: apt-get update && apt-get install -y git ca-certificates
       - uses: actions/checkout@v4
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - run: bash tools/install-dependencies.sh build
-      - run: python3 tools/test-profile.py -v
-      - run: bash tools/build-corry.sh
-      - run: QT_QPA_PLATFORM=offscreen ctest --test-dir build-corry -R '^(userstest|partitionconfigtest|corrypartitiontest|welcometest)$' --output-on-failure
-      - run: DESTDIR=/tmp/corry-stage bash tools/install-corry.sh build-corry
-      - run: for distro in edukasaun debion; do python3 tools/corry-branding.py --check config/distros/$distro; done
-      - run: DESTDIR=/tmp/corry-stage-edukasaun bash tools/install-profile.sh --distro edukasaun
-      - run: DESTDIR=/tmp/corry-stage-debion bash tools/install-profile.sh --distro debion
-      - name: Package development builds
+      - name: Install build dependencies from debian/control
+        run: apt-get install -y dpkg-dev debhelper && apt-get build-dep -y ./
+      - name: Build the Debian packages (runs the native and profile tests)
+        run: dpkg-buildpackage -us -uc -b
+      - name: Install Debian's Calamares first, as a live image would have it
+        run: |
+          apt-get install -y calamares calamares-settings-debian
+          test -f /etc/xdg/autostart/calamares-desktop-icon.desktop || ls /etc/xdg/autostart
+      - name: Install Corry over it; Calamares must be removed
+        run: |
+          cd ..
+          apt-get install -y ./corry_*.deb ./corry-edukasaun_*_all.deb
+          # The APT hook purges leftovers on the next dpkg run.
+          apt-get install -y --reinstall ./corry-edukasaun_*_all.deb
+      - name: Verify nothing of Debian's Calamares is left
+        run: |
+          set -x
+          for package in calamares calamares-settings-debian; do
+            status=$(dpkg-query -W -f='${db:Status-Abbrev}' "$package" 2>/dev/null || true)
+            test -z "$status" || test "$status" = "un " || { echo "$package is still $status"; exit 1; }
+          done
+          ! ls /etc/xdg/autostart/calamares-desktop-icon.desktop /usr/share/applications/install-debian.desktop 2>/dev/null
+          test "$(readlink -f /usr/bin/install-debian)" = /usr/bin/corry-installer
+          dpkg-query -S /etc/calamares/settings.conf | grep -q '^corry-edukasaun:'
+          grep -q 'corryPage: greeting' /etc/calamares/modules/welcome.conf
+          dpkg --verify corry corry-edukasaun
+          # The preflight check runs and reports the missing live image (no ISO here).
+          ! /usr/lib/corry/preflight.py --config /etc/calamares 2> preflight.txt
+          grep -q 'Live system image not found' preflight.txt
+      - name: Switch profile, then remove Corry completely
+        run: |
+          cd ..
+          apt-get install -y ./corry-debion_*_all.deb
+          ! dpkg-query -W -f='${db:Status-Abbrev}' corry-edukasaun 2>/dev/null | grep -q '^ii'
+          grep -q 'DebION' /etc/calamares/branding/corry/branding.desc
+          apt-get purge -y corry corry-debion
+          ! ls -d /etc/calamares /usr/lib/corry /usr/share/calamares /etc/apt/apt.conf.d/80corry-remove-calamares 2>/dev/null
+      - name: Collect packages
         run: |
           mkdir -p dist
-          for distro in edukasaun debion; do
-            release="/tmp/corry-release-$distro"
-            mkdir -p "$release"
-            cp -a /tmp/corry-stage/. "$release/"
-            cp -a "/tmp/corry-stage-$distro/." "$release/"
-            # One manifest covering the engine and the profile.
-            sort -u /tmp/corry-stage/usr/lib/corry/manifest "/tmp/corry-stage-$distro/usr/lib/corry/manifest" > "$release/usr/lib/corry/manifest"
-            tar -I 'xz -T2 -3' -C "$release" -cf "dist/corry-$(cat VERSION)-$distro-debian-${{ matrix.debian }}-amd64.tar.xz" .
-          done
-          cd dist
-          sha256sum *.tar.xz > SHA256SUMS
+          cp ../*.deb dist/
+          cd dist && sha256sum *.deb > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: corry-debian-${{ matrix.debian }}-amd64
+          name: corry-0.1-debian-${{ matrix.debian }}-amd64-debs
           path: dist/*
           retention-days: 14

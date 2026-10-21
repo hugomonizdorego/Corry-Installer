@@ -1,0 +1,15 @@
+usr/bin/calamares
+usr/lib/*/libcalamares.so.*
+usr/lib/*/libcalamaresui.so.*
+usr/lib/*/calamares
+usr/share/calamares/branding/corry
+usr/share/calamares/qml
+usr/share/locale
+usr/share/polkit-1/actions
+usr/share/man/man8
+tools/corry-installer usr/bin
+tools/preflight.py usr/lib/corry
+tools/remove-calamares usr/lib/corry
+tools/corry-desktop-icon usr/lib/corry
+config/corry/corry-desktop-icon.desktop etc/xdg/autostart
+config/corry/apt/80corry-remove-calamares etc/apt/apt.conf.d

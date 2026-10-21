@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: CC0-1.0
+// Installed by the corry package. After every dpkg run, purge what is left of
+// Debian's Calamares (its configuration and autostart entry) so it can never
+// compete with Corry. Does nothing when no such package is left.
+DPkg::Post-Invoke { "if [ -x /usr/lib/corry/remove-calamares ]; then /usr/lib/corry/remove-calamares --purge-rc || true; fi"; };

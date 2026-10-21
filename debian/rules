@@ -1,0 +1,40 @@
+#!/usr/bin/make -f
+# SPDX-License-Identifier: GPL-3.0-or-later
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export QT_QPA_PLATFORM = offscreen
+
+# Only the modules Corry uses are built (same list as tools/build-corry.sh).
+KEEP := welcome locale keyboard partition users summary finished mount unpackfs \
+        machineid fstab localecfg displaymanager networkcfg hwclock corrycleanup \
+        corryupdate corrygrub initramfs grubcfg bootloader umount
+SKIP := $(filter-out $(KEEP),$(notdir $(patsubst %/,%,$(dir $(wildcard src/modules/*/CMakeLists.txt src/modules/*/module.desc)))))
+# Debian builds use Qt 6. CORRY_QT=5 exists only for local packaging tests.
+CORRY_QT ?= 6
+BUILDDIR := obj-$(DEB_HOST_GNU_TYPE)
+
+%:
+	dh $@ --buildsystem=cmake+ninja --builddirectory=$(BUILDDIR)
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-DWITH_QT6=$(if $(filter 6,$(CORRY_QT)),ON,OFF) \
+		-DWITH_QML=ON -DWITH_PYTHON=ON -DINSTALL_CONFIG=OFF \
+		-DBUILD_TESTING=ON -DBUILD_CRASH_REPORTING=OFF \
+		-DSKIP_MODULES="$(SKIP)"
+
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	cd $(BUILDDIR) && ctest --output-on-failure \
+		-R '^(userstest|partitionconfigtest|corrypartitiontest|welcometest)$$'
+	python3 tools/test-profile.py
+endif
+
+override_dh_auto_install:
+	dh_auto_install --destdir=debian/tmp
+	# Profiles are generated from config/distros/<id>/distro.yaml.
+	DESTDIR=$(CURDIR)/debian/corry-edukasaun bash tools/install-profile.sh --distro edukasaun --package
+	DESTDIR=$(CURDIR)/debian/corry-debion bash tools/install-profile.sh --distro debion --package
+
+override_dh_shlibdeps:
+	dh_shlibdeps -l$(CURDIR)/debian/corry/usr/lib/$(DEB_HOST_MULTIARCH) \
+		$(if $(filter 5,$(CORRY_QT)),-- --ignore-missing-info)

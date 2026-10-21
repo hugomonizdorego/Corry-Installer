@@ -1,0 +1,18 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Put the Corry launcher on the desktop of the live session's user.
+# Started by /etc/xdg/autostart/corry-desktop-icon.desktop; does nothing on an
+# installed system (and Corry is removed from installed systems anyway).
+grep -qw 'boot=live' /proc/cmdline 2>/dev/null || [ -d /run/live/medium ] || exit 0
+launcher=/usr/share/applications/corry-installer.desktop
+[ -f "$launcher" ] || exit 0
+desktop=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
+[ -n "$desktop" ] && [ "$desktop" != "$HOME" ] || desktop=$HOME/Desktop
+mkdir -p "$desktop"
+cp "$launcher" "$desktop/corry-installer.desktop"
+chmod 755 "$desktop/corry-installer.desktop"
+# GNOME and others only start desktop files the user trusts.
+if command -v gio >/dev/null; then
+ gio set "$desktop/corry-installer.desktop" metadata::trusted true 2>/dev/null || true
+fi
+exit 0

@@ -5,6 +5,7 @@ from pathlib import Path
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -139,7 +140,9 @@ class BrandingTests(unittest.TestCase):
                                  '/tmp/live/Corry image.squashfs')
                 launcher = (root / 'usr/share/applications/corry-installer.desktop').read_text()
                 self.assertIn('Name=Install ' + desc['strings']['productName'] + '\n', launcher)
-                self.assertTrue((root / 'etc/skel/Desktop/corry-installer.desktop').is_file())
+                self.assertFalse((root / 'etc/skel').exists())  # Desktop icon comes from the autostart helper.
+                self.assertIn('/usr/lib/corry/corry-desktop-icon',
+                              (root / 'etc/xdg/autostart/corry-desktop-icon.desktop').read_text())
                 self.assertFalse((root / 'etc/xdg/autostart/corry-installer.desktop').exists())
                 for hidden in ['calamares', 'install-debian']:
                     self.assertIn('Hidden=true', (root / f'usr/local/share/applications/{hidden}.desktop').read_text())
@@ -150,6 +153,66 @@ class BrandingTests(unittest.TestCase):
         self.assertEqual(names, ['Edukasaun OS', 'DebION GNU/Linux'])
         with stage('edukasaun', '--autostart') as temp:
             self.assertIn('Exec=corry-installer', (Path(temp) / 'etc/xdg/autostart/corry-installer.desktop').read_text())
+
+    def test_package_mode_writes_only_profile_files(self):
+        with stage('debion', '--package') as temp:
+            root = Path(temp)
+            files = sorted(str(p.relative_to(root)) for p in root.rglob('*') if p.is_file() or p.is_symlink())
+            self.assertTrue(all(f.startswith(('etc/calamares/', 'usr/share/applications/', 'usr/bin/install-debian'))
+                                for f in files), files)
+            self.assertEqual(os.readlink(root / 'usr/bin/install-debian'), 'corry-installer')
+            self.assertIn('Name=Install DebION GNU/Linux', (root / 'usr/share/applications/corry-installer.desktop').read_text())
+
+    def test_debian_packaging(self):
+        control = (ROOT / 'debian/control').read_text()
+        engine = control.split('\nPackage: ')[1]
+        for field in ['Conflicts', 'Replaces']:
+            line = next(l for l in engine.splitlines() if l.startswith(field + ':'))
+            self.assertIn('calamares,', line + ',')
+            self.assertIn('calamares-settings-debian', line)
+        self.assertIn('Provides: calamares', engine)
+        for distro in DISTROS:
+            self.assertIn(f'Package: corry-{distro}', control)
+        self.assertEqual((ROOT / 'debian/changelog').read_text().split('(')[1].split(')')[0],
+                         (ROOT / 'VERSION').read_text().strip())
+        install = (ROOT / 'debian/corry.install').read_text()
+        for path in ['tools/remove-calamares', 'config/corry/apt/80corry-remove-calamares', 'tools/corry-desktop-icon']:
+            self.assertIn(path, install)
+        rules = (ROOT / 'debian/rules').read_text()
+        build = (ROOT / 'tools/build-corry.sh').read_text()
+        block = re.search(r'^KEEP := ((?:.*\\\n)*.*)$', rules, re.M).group(1)
+        self.assertEqual(set(block.replace('\\', ' ').split()), set(build.split("keep='")[1].split("'")[0].split()))
+
+    def test_remove_calamares_helper(self):
+        script = ROOT / 'tools/remove-calamares'
+        with tempfile.TemporaryDirectory() as temp:
+            bin_dir = Path(temp)
+            log = bin_dir / 'log'
+            leftover = bin_dir / 'calamares-desktop-icon.desktop'
+            kept = bin_dir / 'settings.conf'
+            for path in (leftover, kept):
+                path.write_text('x')
+            (bin_dir / 'dpkg-query').write_text(f'''#!/bin/sh
+case "$1" in
+ -W) printf 'rc |calamares-settings-debian\\nii |calamares\\n';;
+ -L) printf '{leftover}\\n{kept}\\n';;
+ -S) case "$2" in {kept}) echo 'corry-edukasaun, calamares-settings-debian: $2';; *) echo 'calamares-settings-debian: $2';; esac;;
+esac
+''')
+            for tool in ['dpkg', 'apt-get']:
+                (bin_dir / tool).write_text(f'#!/bin/sh\necho {tool} "$@" >> {log}\n')
+            for tool in ['dpkg-query', 'dpkg', 'apt-get']:
+                (bin_dir / tool).chmod(0o755)
+            env = {'PATH': f'{bin_dir}:/usr/bin:/bin'}
+            run = lambda mode: subprocess.run(['sh', str(script), mode], env=env, check=True, stdout=subprocess.PIPE)
+            run('--leftovers')
+            self.assertFalse(leftover.exists())
+            self.assertTrue(kept.exists())
+            run('--purge-rc')
+            run('--purge')
+            lines = log.read_text().splitlines()
+            self.assertIn('dpkg --purge calamares-settings-debian', lines)
+            self.assertIn('apt-get purge -y calamares calamares-settings-debian', lines)
 
     def test_branding_validation(self):
         branding = self.branding()

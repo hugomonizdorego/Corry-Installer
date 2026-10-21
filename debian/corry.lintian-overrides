@@ -1,0 +1,8 @@
+# Calamares' libraries are private to the installer.
+corry: package-name-doesnt-match-sonames *
+corry: no-symbols-control-file *
+# Upstream Calamares test helper, not run on installed systems.
+corry: script-not-executable [usr/lib/*/calamares/modules/unpackfs/runtests.sh]
+corry: no-manual-page [usr/bin/corry-installer]
+# Calamares ships this translation; the code is valid for Qt.
+corry: unknown-locale-code ja-Hira *

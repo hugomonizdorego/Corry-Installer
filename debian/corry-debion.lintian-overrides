@@ -1,0 +1,4 @@
+# corry-installer comes from the corry package, which this package depends on.
+corry-debion: desktop-command-not-in-package corry-installer [usr/share/applications/corry-installer.desktop]
+# Compatibility link for Debian's install-debian command.
+corry-debion: no-manual-page [usr/bin/install-debian]

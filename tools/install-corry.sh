@@ -5,6 +5,11 @@
 set -euo pipefail
 build=${1:?Usage: install-corry.sh BUILD_DIRECTORY}
 destination=${DESTDIR:-}
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+if [[ -z $destination ]] && command -v dpkg-query >/dev/null; then
+ # Corry replaces Calamares' files; Debian's packages must go first.
+ sh "$repo/tools/remove-calamares" --purge
+fi
 cmake --install "$build"
 install -d "$destination/usr/lib/corry"
 # install_manifest.txt holds absolute paths, prefixed with DESTDIR when staging.

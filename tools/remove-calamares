@@ -1,0 +1,48 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Remove Debian's Calamares installer completely so it cannot conflict with Corry.
+#
+#   remove-calamares --purge      Purge installed Calamares packages (outside dpkg;
+#                                 used by tools/install-corry.sh).
+#   remove-calamares --leftovers  Delete files left by removed Calamares packages
+#                                 (corry postinst; dpkg holds its lock there).
+#   remove-calamares --purge-rc   Purge removed-but-not-purged Calamares packages
+#                                 (APT DPkg::Post-Invoke hook, after dpkg finished).
+set -u
+# calamares, calamares-settings-debian and derivative settings packages.
+packages() {
+ dpkg-query -W -f='${db:Status-Abbrev}|${Package}\n' 'calamares' 'calamares-settings-*' 'calamares-extensions*' 2>/dev/null \
+  | while IFS='|' read -r status package; do
+   case "$1" in
+    installed) case "$status" in ii*|iU*|iF*|iH*|hi*) echo "$package";; esac;;
+    removed) case "$status" in rc*) echo "$package";; esac;;
+   esac
+  done
+}
+case "${1:-}" in
+ --purge)
+  list=$(packages installed; packages removed)
+  [ -z "$list" ] && exit 0
+  echo "Corry: removing Calamares packages: $list"
+  # shellcheck disable=SC2086
+  DEBIAN_FRONTEND=noninteractive apt-get purge -y $list
+  ;;
+ --leftovers)
+  for package in $(packages removed); do
+   dpkg-query -L "$package" 2>/dev/null | while read -r path; do
+    [ -f "$path" ] || [ -L "$path" ] || continue
+    # Keep files another installed package now owns (Corry takes over /etc/calamares).
+    owners=$(dpkg-query -S "$path" 2>/dev/null | sed 's/: .*//' | tr ',' '\n' | sed 's/^ *//' | grep -vx "$package")
+    [ -n "$owners" ] || rm -f -- "$path"
+   done
+  done
+  ;;
+ --purge-rc)
+  list=$(packages removed)
+  [ -z "$list" ] && exit 0
+  # shellcheck disable=SC2086
+  dpkg --purge $list >/dev/null 2>&1 && echo "Corry: purged leftover Calamares configuration: $list"
+  ;;
+ *) echo "Usage: remove-calamares --purge|--leftovers|--purge-rc" >&2; exit 2;;
+esac
+exit 0

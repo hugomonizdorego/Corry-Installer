@@ -1,0 +1,9 @@
+# Development files of the private libraries, and Calamares' own launcher,
+# icon and example branding: Corry ships its own.
+usr/include
+usr/lib/*/cmake
+usr/lib/*/libcalamares.so
+usr/lib/*/libcalamaresui.so
+usr/share/applications/calamares.desktop
+usr/share/icons/hicolor/scalable/apps/calamares.svg
+usr/share/calamares/branding/default

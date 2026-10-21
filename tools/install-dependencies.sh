@@ -10,7 +10,7 @@ repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 corry_detect_base
 echo "Installing Corry dependencies for Debian $corry_base."
 apt-get -o APT::Update::Error-Mode=any update
-runtime=(calamares zenity btrfs-progs xfsprogs e2fsprogs dosfstools jfsutils util-linux kmod parted
+runtime=(zenity btrfs-progs xfsprogs e2fsprogs dosfstools jfsutils util-linux kmod parted
   cryptsetup lvm2 squashfs-tools rsync locales tzdata keyboard-configuration
   initramfs-tools sudo os-prober efibootmgr grub2-common python3 python3-yaml
   polkitd pkexec fonts-noto-core gparted

@@ -1,0 +1,9 @@
+corry (0.1) unstable; urgency=medium
+
+  * First Debian packages of Corry, the installer for Edukasaun OS and
+    DebION GNU/Linux (based on Calamares 3.3.15).
+  * corry replaces Debian's calamares and calamares-settings-debian and
+    purges what is left of them.
+  * corry-edukasaun and corry-debion make Corry the default installer.
+
+ -- Hugo Moniz do Rego <hugomonizdorego@angelinojoana.com>  Wed, 21 Oct 2026 12:00:00 +0900

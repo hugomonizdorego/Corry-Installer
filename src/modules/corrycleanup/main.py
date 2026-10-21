@@ -15,15 +15,17 @@ LIVE_PACKAGES = (
     "live-boot", "live-boot-initramfs-tools", "live-config",
     "live-config-systemd", "live-config-sysvinit", "live-tools",
 )
-# Debian packages that only exist for the installer. Corry's build is installed
-# over the "calamares" package, so purging it also removes Corry's program files.
-INSTALLER_PACKAGES = ("calamares", "calamares-settings-debian")
+# Debian packages that only exist for the installer: Corry's own packages and,
+# for script installs, Debian's Calamares.
+INSTALLER_PACKAGES = ("corry-edukasaun", "corry-debion", "corry", "calamares", "calamares-settings-debian")
 # Files and directories that belong only to the installer.
 INSTALLER_PATHS = (
     "usr/share/applications/corry-installer.desktop",
     "usr/share/applications/calamares.desktop",
     "etc/skel/Desktop/corry-installer.desktop",
     "etc/xdg/autostart/corry-installer.desktop",
+    "etc/xdg/autostart/corry-desktop-icon.desktop",
+    "etc/apt/apt.conf.d/80corry-remove-calamares",
     "usr/local/share/applications/calamares.desktop",
     "usr/local/share/applications/install-debian.desktop",
     "usr/local/bin/install-debian",
