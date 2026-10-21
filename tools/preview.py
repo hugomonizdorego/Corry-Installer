@@ -138,6 +138,7 @@ class Preview(QWidget):
             self.media.setMinimumSize(450,310);self.media.setMaximumHeight(350)
             self.media.setSource(QUrl.fromLocalFile(str(BRAND/'WelcomeMedia.qml')))
             if self.media.status()==QQuickWidget.Error:raise RuntimeError(str(self.media.errors()))
+            self.media.rootObject().onActivate()
             hero.addWidget(self.media,1)
             self.layout.addLayout(hero,1)
             card=QFrame();card.setObjectName('corryCard');cl=QVBoxLayout(card);cl.setContentsMargins(20,16,20,16)

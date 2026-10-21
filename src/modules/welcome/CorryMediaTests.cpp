@@ -27,6 +27,11 @@ private slots:
         QVERIFY( !root->property( "mediaFailed" ).toBool() );
         QVERIFY( QMetaObject::invokeMethod( root, "onLeave" ) );
         QTRY_VERIFY( !root->property( "isPlaying" ).toBool() );
+        root->setProperty( "autoplay", true );
+        QMetaObject::invokeMethod( root, "onActivate" );
+        QTRY_VERIFY( root->property( "isPlaying" ).toBool() );
+        QMetaObject::invokeMethod( root, "onLeave" );
+        QTRY_VERIFY( !root->property( "isPlaying" ).toBool() );
         root->setProperty( "videoSource", "video/does-not-exist.webm" );
         QMetaObject::invokeMethod( root, "togglePlayback" );
         QTRY_VERIFY_WITH_TIMEOUT( root->property( "mediaFailed" ).toBool(), 15000 );

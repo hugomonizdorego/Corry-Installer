@@ -6,7 +6,8 @@ import "Brand.js" as Brand
 Rectangle {
     id: frame
     color: "#102e2d"; radius: 14
-    property bool active: true
+    property bool active: false
+    property bool autoplay: Brand.config.welcome.videoAutoplay
     property bool muted: Brand.config.welcome.videoMuted
     property string videoSource: Brand.config.welcome.video
     property bool configured: !!videoSource
@@ -16,7 +17,10 @@ Rectangle {
         if (!player.item || mediaFailed) return
         if (player.item.playing) player.item.pause(); else { active = true; player.item.play() }
     }
-    function onActivate() { active = true }
+    function onActivate() {
+        active = true
+        if (autoplay && player.item && !mediaFailed) player.item.play()
+    }
     function onLeave() { active = false; if (player.item) player.item.stop() }
     ColumnLayout {
         anchors.fill: parent; anchors.margins: 10; spacing: 8
@@ -32,7 +36,7 @@ Rectangle {
                     item.sourceUrl = Qt.binding(function() { return frame.videoSource ? Qt.resolvedUrl(frame.videoSource) : "" })
                     item.muted = Qt.binding(function() { return frame.muted })
                     item.volume = 0.5
-                    if (Brand.config.welcome.videoAutoplay && frame.active) item.play()
+                    if (frame.autoplay && frame.active) item.play()
                 }
                 visible: frame.isPlaying
             }
