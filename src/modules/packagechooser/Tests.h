@@ -21,7 +21,7 @@ public:
 
 private Q_SLOTS:
     void initTestCase();
-    void testCorryClickSelection();
+    void testBogus();
     void testAppData();
 };
 

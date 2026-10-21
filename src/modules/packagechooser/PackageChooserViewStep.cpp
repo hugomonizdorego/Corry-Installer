@@ -60,10 +60,6 @@ PackageChooserViewStep::widget()
                  &PackageChooserPage::selectionChanged,
                  [ = ]() { emit nextStatusChanged( this->isNextEnabled() ); } );
         hookupModel();
-        if ( m_corryRepositories )
-        {
-            m_widget->enableCorryRepositoryCheck();
-        }
     }
     return m_widget;
 }
@@ -76,11 +72,6 @@ PackageChooserViewStep::isNextEnabled() const
     {
         // No way to have changed anything
         return true;
-    }
-
-    if ( !m_widget->selectedPackageIds().isEmpty() && !m_widget->repositoriesReady() )
-    {
-        return false;
     }
 
     switch ( m_config->mode() )
@@ -143,17 +134,12 @@ PackageChooserViewStep::jobs() const
 void
 PackageChooserViewStep::setConfigurationMap( const QVariantMap& configurationMap )
 {
-    m_corryRepositories = configurationMap.value( "corryRepositories", false ).toBool();
     m_config->setDefaultId( moduleInstanceKey() );
     m_config->setConfigurationMap( configurationMap );
 
     if ( m_widget )
     {
         hookupModel();
-        if ( m_corryRepositories )
-        {
-            m_widget->enableCorryRepositoryCheck();
-        }
     }
 }
 
