@@ -84,8 +84,9 @@ class ProfileTests(unittest.TestCase):
             (config / 'modules').mkdir()
             (config / 'settings.conf').write_text('branding: corry\n')
             (config / 'modules/unpackfs.conf').write_text('unpack:\n- source: /missing/corry.squashfs\n')
-            with patch.object(preflight.shutil, 'which', return_value='/usr/bin/tool'):
+            with patch.object(preflight.shutil, 'which', return_value='/usr/bin/tool') as probe:
                 errors = preflight.check(config)
+            self.assertTrue(all('/usr/sbin' in call.kwargs['path'] for call in probe.call_args_list))
             self.assertEqual(errors, ['Live system image not found: /missing/corry.squashfs'])
 
 

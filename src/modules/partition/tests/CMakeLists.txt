@@ -81,6 +81,12 @@ calamares_add_test(
 
 calamares_add_test(
     corrypartitiontest GUI
-    SOURCES CorryPartitionTests.cpp
-    LIBRARIES calamares_viewmodule_partition calamares::kpmcore Calamares::calamaresui
+    SOURCES
+        CorryPartitionTests.cpp
+        ${PartitionModule_SOURCE_DIR}/gui/PartitionDialogHelpers.cpp
+        ${PartitionModule_basic_SRC}
+        ${PartitionModule_SOURCE_DIR}/core/DeviceModel.cpp
+        ${PartitionModule_SOURCE_DIR}/core/DirFSRestrictLayout.cpp
+    LIBRARIES calamares::kpmcore Calamares::calamaresui
+    DEFINITIONS ${_partition_defs}
 )

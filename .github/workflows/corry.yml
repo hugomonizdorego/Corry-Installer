@@ -14,6 +14,8 @@ jobs:
       matrix:
         debian: ['12', '13']
     container: debian:${{ matrix.debian }}
+    env:
+      CORRY_BUILD_TYPE: Debug
     steps:
       - run: apt-get update && apt-get install -y git ca-certificates
       - uses: actions/checkout@v4
@@ -22,3 +24,5 @@ jobs:
       - run: python3 tools/test-profile.py
       - run: bash tools/build-corry.sh
       - run: QT_QPA_PLATFORM=offscreen ctest --test-dir build-corry -R '^(userstest|partitionconfigtest|corrypartitiontest)$' --output-on-failure
+      - run: DESTDIR=/tmp/corry-stage cmake --install build-corry
+      - run: DESTDIR=/tmp/corry-stage bash tools/install-profile.sh

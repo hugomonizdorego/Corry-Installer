@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Read-only checks. Never format, mount, or modify a disk."""
 import argparse
+import os
 import pathlib
 import shutil
 import sys
@@ -13,7 +14,9 @@ REQUIRED = ("mkfs.btrfs", "mkfs.ext4", "mkfs.xfs", "mkfs.fat", "mkswap",
 
 
 def check(config):
-    errors = ["Missing dependency: " + name for name in REQUIRED if not shutil.which(name)]
+    # Desktop sessions may omit sbin from the unprivileged user's PATH.
+    search_path = os.environ.get("PATH", os.defpath) + os.pathsep + "/usr/sbin:/sbin"
+    errors = ["Missing dependency: " + name for name in REQUIRED if not shutil.which(name, path=search_path)]
     try:
         settings = yaml.safe_load((config / "settings.conf").read_text())
         if settings.get("branding") != "corry":

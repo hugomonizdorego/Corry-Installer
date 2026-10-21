@@ -14,7 +14,7 @@ for path in "$repo"/src/modules/*/; do
  name=$(basename "$path")
  [[ $keep == *" $name "* ]] || skip+=("$name")
 done
-cmake -S "$repo" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo  -DCMAKE_INSTALL_PREFIX=/usr -DWITH_QT6="$qt6" -DWITH_QML=ON -DWITH_PYTHON=ON  -DINSTALL_CONFIG=OFF -DBUILD_TESTING=ON -DBUILD_CRASH_REPORTING=OFF  -DSKIP_MODULES="${skip[*]}"
+cmake -S "$repo" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE="${CORRY_BUILD_TYPE:-RelWithDebInfo}"  -DCMAKE_INSTALL_PREFIX=/usr -DWITH_QT6="$qt6" -DWITH_QML=ON -DWITH_PYTHON=ON  -DINSTALL_CONFIG=OFF -DBUILD_TESTING=ON -DBUILD_CRASH_REPORTING=OFF  -DSKIP_MODULES="${skip[*]}"
 cmake --build "$build" --parallel "${CORRY_BUILD_JOBS:-2}"
 # A successful generic configure may skip a module whose dependencies are missing.
 # Require the native pages explicitly rather than shipping a partial installer.

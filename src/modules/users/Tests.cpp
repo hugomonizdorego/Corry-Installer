@@ -598,7 +598,12 @@ UserTests::testUserUmask()
     QCOMPARE( c.homePermissions(), permission );
     QCOMPARE( c.homeUMask(), umask );
     // The QChar() is needed to disambiguate from the overload that takes a double
-    QCOMPARE( QStringLiteral( "%1" ).arg( umask, 3, 8, QChar( '0' ) ), umask_string );
+    // The invalid sentinel is already checked above. Qt5/Qt6 format negative
+    // integers in base 8 differently; that is not a Config behavior to test.
+    if ( umask >= 0 )
+    {
+        QCOMPARE( QStringLiteral( "%1" ).arg( umask, 3, 8, QChar( '0' ) ), umask_string );
+    }
 
     QCOMPARE( c.forbiddenLoginNames(), forbidden );
 }

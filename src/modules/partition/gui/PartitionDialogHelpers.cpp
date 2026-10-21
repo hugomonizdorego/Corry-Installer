@@ -13,7 +13,6 @@
 
 #include "core/PartUtils.h"
 #include "core/PartitionCoreModule.h"
-#include "gui/CreatePartitionDialog.h"
 
 #include "GlobalStorage.h"
 #include "JobQueue.h"
@@ -21,6 +20,7 @@
 
 #include <kpmcore/fs/filesystem.h>
 
+#include <QCoreApplication>
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
@@ -244,12 +244,12 @@ validateMountPoint( PartitionCoreModule* core, const QString& mountPoint, const 
 
     if ( !mountPoint.isEmpty() && inUse.contains( mountPoint ) )
     {
-        msg = CreatePartitionDialog::tr( "Mountpoint already in use. Please select another one.", "@info" );
+        msg = QCoreApplication::translate( "CreatePartitionDialog", "Mountpoint already in use. Please select another one.", "@info" );
         ok = false;
     }
     else if ( !mountPoint.isEmpty() && !mountPoint.startsWith( '/' ) )
     {
-        msg = CreatePartitionDialog::tr( "Mountpoint must start with a <tt>/</tt>.", "@info" );
+        msg = QCoreApplication::translate( "CreatePartitionDialog", "Mountpoint must start with a <tt>/</tt>.", "@info" );
         ok = false;
     } else {
         // Validate the chosen filesystem + mountpoint combination.
@@ -261,7 +261,7 @@ validateMountPoint( PartitionCoreModule* core, const QString& mountPoint, const 
         }
         if ( !mountPoint.isEmpty() && s_unmountableFS.contains( selectedFsType ) )
         {
-            msg = CreatePartitionDialog::tr( "This filesystem cannot have a mount point. Choose a Linux filesystem for system folders.", "@info" );
+            msg = QCoreApplication::translate( "CreatePartitionDialog", "This filesystem cannot have a mount point. Choose a Linux filesystem for system folders.", "@info" );
             if ( label )
             {
                 label->setText( msg );
@@ -313,11 +313,11 @@ validateMountPoint( PartitionCoreModule* core, const QString& mountPoint, const 
         }
 
         if ( !fsTypeIsAllowed ) {
-            msg = CreatePartitionDialog::tr( "Filesystem is prohibited by this distro. Consider selecting another one.", "@info" );
+            msg = QCoreApplication::translate( "CreatePartitionDialog", "Filesystem is prohibited by this distro. Consider selecting another one.", "@info" );
             ok = false;
         }
         else if ( !fsTypeIsAllowedForMountPoint ) {
-            msg = CreatePartitionDialog::tr( "Filesystem is prohibited for use on this mountpoint. Consider selecting a different filesystem or mountpoint.", "@info" );
+            msg = QCoreApplication::translate( "CreatePartitionDialog", "Filesystem is prohibited for use on this mountpoint. Consider selecting a different filesystem or mountpoint.", "@info" );
             ok = false;
         }
     }
