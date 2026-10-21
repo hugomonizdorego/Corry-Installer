@@ -2,7 +2,6 @@
 #include "gui/PartitionDialogHelpers.h"
 #include "GlobalStorage.h"
 #include "JobQueue.h"
-#include <kpmcore/fs/filesystemfactory.h>
 #include <QComboBox>
 #include <QDialog>
 #include <QLabel>
@@ -24,7 +23,8 @@ private Q_SLOTS:
         gs->insert( "efiSystemPartition", "/boot/efi" );
         gs->insert( "defaultFileSystemType", "btrfs" );
         gs->insert( "armInstall", true ); // Simulate EFI without reading any disk.
-        FileSystemFactory::init();
+        // These tests use enum/name mappings only. Probing real filesystem
+        // tools requires KPMcore's system DBus backend and is not a unit-test setup.
         QDialog dialog;
         auto* layout = new QVBoxLayout( &dialog );
         auto* mount = new QComboBox( &dialog ); mount->setEditable( true );
