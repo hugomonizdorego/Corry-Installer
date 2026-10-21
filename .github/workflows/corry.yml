@@ -30,3 +30,20 @@ jobs:
       - run: DESTDIR=/tmp/corry-stage cmake --install build-corry
       - run: DESTDIR=/tmp/corry-stage-edukasaun bash tools/install-profile.sh --distro edukasaun
       - run: DESTDIR=/tmp/corry-stage-debion bash tools/install-profile.sh --distro debion
+      - name: Package development builds
+        run: |
+          mkdir -p dist
+          for distro in edukasaun debion; do
+            release="/tmp/corry-release-$distro"
+            mkdir -p "$release"
+            cp -a /tmp/corry-stage/. "$release/"
+            cp -a "/tmp/corry-stage-$distro/." "$release/"
+            tar -I 'xz -T2 -3' -C "$release" -cf "dist/corry-$distro-debian-${{ matrix.debian }}-amd64.tar.xz" .
+          done
+          cd dist
+          sha256sum *.tar.xz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: corry-debian-${{ matrix.debian }}-amd64
+          path: dist/*
+          retention-days: 14

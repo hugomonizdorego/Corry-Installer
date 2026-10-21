@@ -55,6 +55,8 @@ chooser dan backend memakai katalog yang sama.
    image, metadata diverifikasi, dependency disimulasikan, lalu seluruh unduhan diselesaikan.
    Repo tidak dapat diakses, paket tidak tersedia, signature gagal, atau ruang unduhan
    habis menghentikan proses pada tahap ini sebelum perubahan disk dimulai.
+   Paket tambahan pada iterasi awal memakai mirror HTTP/HTTPS bertanda tangan;
+   sumber media `file:` yang tidak membuat cache unduhan dihentikan sebelum partisi.
 5. Setelah unpack, `corrypackages` memeriksa hash cache, memasang dengan
    `--no-download --no-remove`, menjalankan `apt-get check` dan memeriksa status paket
    yang diminta. Kegagalan tidak dilewati. Cache dibersihkan setelah sukses.
@@ -104,7 +106,10 @@ memasang paket secara offline ke root dpkg sementara. Tes ini tidak memformat di
 
 CI membangun backend lengkap untuk Debian 12/Qt5 dan Debian 13/Qt6, menjalankan tes
 native password/partisi/packagechooser dan memasang hasil build serta dua profil
-ke direktori staging. Hasil run CI terbaru di PR menjadi acuan status build.
+ke direktori staging. Build menghasilkan arsip pengembangan per distro dan basis
+Debian serta checksum SHA256 di artifact GitHub Actions (disimpan 14 hari). Arsip
+untuk pengujian root ISO/chroot dengan dependensi yang cocok, bukan paket Debian
+bertanda tangan atau ISO rilis. Hasil run CI terbaru di PR menjadi acuan status build.
 
 Screenshot berasal dari `tools/preview.py`: QML header/slideshow, QSS dan artwork
 produksi dengan isi halaman storyboard dan data contoh. Status internet/progresnya

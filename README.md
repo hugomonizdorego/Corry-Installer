@@ -47,6 +47,12 @@ sudo bash tools/install-profile.sh --distro edukasaun
 # sudo bash tools/install-profile.sh --distro debion
 ```
 
+CI also uploads development archives for both distro profiles and Debian versions,
+with SHA256 checksums. These are staged file trees for ISO-build testing, not signed
+Debian packages or tested release ISOs. They require the matching Debian runtime
+dependencies. Download them from the successful workflow run; artifacts are retained
+for 14 days.
+
 The existing `calamares` executable/API paths are retained. Installing under `/usr`
 replaces files supplied by Debian's backend package; dedicated Debian packaging is
 future work. Include the built Corry backend and selected profile in the live ISO,
