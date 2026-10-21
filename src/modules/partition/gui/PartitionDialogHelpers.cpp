@@ -115,8 +115,9 @@ addPartitionRolePicker( QVBoxLayout* layout, QComboBox* mount, QComboBox* filesy
             // Do not silently enable formatting on an existing partition.
             // A conflicting filesystem is explained by the normal validator.
             FileSystem::Type desiredFS = role.requiredFS;
+            const auto currentFS = FileSystem::typeForName( filesystem->currentText() );
             if ( desiredFS == FileSystem::Unknown
-                 && s_unmountableFS.contains( FileSystem::typeForName( filesystem->currentText() ) ) )
+                 && ( s_unmountableFS.contains( currentFS ) || currentFS == FileSystem::Fat16 || currentFS == FileSystem::Fat32 ) )
             {
                 PartUtils::canonicalFilesystemName(
                     Calamares::JobQueue::instance()->globalStorage()->value( "defaultFileSystemType" ).toString(), &desiredFS );

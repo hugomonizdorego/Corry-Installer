@@ -47,6 +47,10 @@ private Q_SLOTS:
         QCOMPARE( FileSystem::typeForName( fs->currentText() ), FileSystem::Fat32 );
         QVERIFY( flagsFromList( *flags ).testFlag( PartitionTable::Flag::Boot ) );
         QCOMPARE( size.value(), 512 );
+        QVERIFY( click( "Root /" ) );
+        QCOMPARE( FileSystem::typeForName( fs->currentText() ), FileSystem::Btrfs );
+        QVERIFY( !flagsFromList( *flags ).testFlag( PartitionTable::Flag::Boot ) );
+        QVERIFY( click( "EFI" ) );
         QVERIFY( click( "Swap" ) );
         QVERIFY( mount->currentText().isEmpty() );
         QCOMPARE( FileSystem::typeForName( fs->currentText() ), FileSystem::LinuxSwap );
