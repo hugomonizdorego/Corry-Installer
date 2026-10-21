@@ -1,0 +1,2 @@
+// SPDX-License-Identifier: CC0-1.0
+var slides = [{"image": "welcome.svg", "title": "Selamat datang di Edukasaun OS", "description": "Ruang baru untuk belajar dan berkarya."}, {"image": "work.svg", "title": "Belajar. Buat. Bagikan.", "description": "Aplikasi pilihan Anda sedang disiapkan."}, {"image": "control.svg", "title": "Siap untuk langkah berikutnya", "description": "Simpan komputer tetap terhubung ke sumber listrik."}];

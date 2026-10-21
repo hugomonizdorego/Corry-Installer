@@ -73,6 +73,31 @@ WelcomePage::WelcomePage( Config* config, QWidget* parent )
 
     initLanguages();
 
+    if ( Branding::instance()->componentName() == QStringLiteral( "corry" ) )
+    {
+        // Keep the real requirements checker beside the preferences; it still
+        // controls whether installation may continue.
+        ui->verticalLayout->removeWidget( m_checkingWidget );
+        ui->horizontalLayout->addWidget( m_checkingWidget, 1 );
+        ui->horizontalLayout->setStretch( 0, 1 );
+        ui->horizontalLayout->setContentsMargins( 24, 20, 24, 20 );
+        ui->horizontalLayout->setSpacing( 32 );
+        ui->mainText->setAlignment( Qt::AlignLeft | Qt::AlignVCenter );
+        QFont titleFont = ui->mainText->font();
+        titleFont.setPointSize( 30 );
+        titleFont.setBold( true );
+        ui->mainText->setFont( titleFont );
+        ui->languageIcon->hide();
+        auto* introduction = new QLabel( this );
+        introduction->setWordWrap( true );
+        introduction->setObjectName( "corryHint" );
+        ui->verticalLayout->insertWidget( ui->verticalLayout->indexOf( ui->mainText ) + 1, introduction );
+        CALAMARES_RETRANSLATE( introduction->setText(
+            tr( "Choose your preferences, prepare your disk, then review and install. "
+                "Btrfs is the default filesystem. Additional software is optional. "
+                "Disk changes only begin after your confirmation." ) ); );
+    }
+
     CALAMARES_RETRANSLATE_SLOT( &WelcomePage::retranslate );
 
     connect( Calamares::ModuleManager::instance(),
@@ -207,7 +232,9 @@ WelcomePage::retranslate()
 {
     const QString message = m_conf->genericWelcomeMessage();
 
-    ui->mainText->setText( message.arg( Calamares::Branding::instance()->versionedName() ) );
+    ui->mainText->setText( Calamares::Branding::instance()->componentName() == QStringLiteral( "corry" )
+        ? tr( "A fresh start.\nAt your pace.\n%1" ).arg( Calamares::Branding::instance()->shortProductName() )
+        : message.arg( Calamares::Branding::instance()->versionedName() ) );
     ui->retranslateUi( this );
     ui->supportButton->setText(
         tr( "%1 Support", "@action" ).arg( Calamares::Branding::instance()->shortProductName() ) );

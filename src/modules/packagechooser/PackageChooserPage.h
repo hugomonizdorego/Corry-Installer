@@ -36,6 +36,8 @@ public:
     void setSelection( const QModelIndex& index );
     /// @brief Is anything selected?
     bool hasSelection() const;
+    void enableCorryRepositoryCheck();
+    bool repositoriesReady() const { return !m_corryCheck || m_repositoriesReady; }
     /** @brief Get the list of selected ids
      *
      * This list may be empty (if none is selected).
@@ -52,6 +54,8 @@ signals:
 private:
     Ui::PackageChooserPage* ui;
     PackageItem m_introduction;
+    bool m_corryCheck = false;
+    bool m_repositoriesReady = false;
 };
 
 #endif  // PACKAGECHOOSERPAGE_H

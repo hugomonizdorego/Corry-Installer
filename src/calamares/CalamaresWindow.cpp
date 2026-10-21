@@ -269,7 +269,9 @@ setDimension( QQuickWidget* w, Qt::Orientation o, int desiredWidth )
         // (with *my* specific screen, style, etc. so YMMV).
         //
         // Bound between (16, 64) with a default of 48.
-        qreal minimumHeight = qBound( qreal( 16 ), w->rootObject() ? w->rootObject()->height() : 48, qreal( 64 ) );
+        const qreal maximumHeight = Calamares::Branding::instance()->componentName() == QStringLiteral( "corry" )
+            ? 128 : 64;
+        qreal minimumHeight = qBound( qreal( 16 ), w->rootObject() ? w->rootObject()->height() : 48, maximumHeight );
         w->setMinimumHeight( int( minimumHeight ) );
         w->setFixedHeight( int( minimumHeight ) );
     }
@@ -401,7 +403,9 @@ CalamaresWindow::CalamaresWindow( QWidget* parent )
 
     // %1 is the distribution name
     CALAMARES_RETRANSLATE( const auto* branding = Calamares::Branding::instance();
-                           setWindowTitle( Calamares::Settings::instance()->isSetupMode()
+                           setWindowTitle( branding->componentName() == QStringLiteral( "corry" )
+                                               ? tr( "Corry Installer — %1" ).arg( branding->productName() )
+                                               : Calamares::Settings::instance()->isSetupMode()
                                                ? tr( "%1 Setup Program" ).arg( branding->productName() )
                                                : tr( "%1 Installer" ).arg( branding->productName() ) ); );
 
@@ -474,7 +478,9 @@ CalamaresWindow::CalamaresWindow( QWidget* parent )
                           baseWidget,
                           ::getWidgetSidebar,
                           ::getQmlSidebar,
-                          qBound( 100, Calamares::defaultFontHeight() * 12, w < windowPreferredWidth ? 100 : 190 ) );
+                          branding->componentName() == QStringLiteral( "corry" )
+                              ? qBound( 150, w / 4, 220 )
+                              : qBound( 100, Calamares::defaultFontHeight() * 12, w < windowPreferredWidth ? 100 : 190 ) );
     QWidget* navigation = flavoredWidget( branding->navigationFlavor(),
                                           ::orientation( branding->navigationSide() ),
                                           m_debugManager,

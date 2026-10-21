@@ -16,6 +16,10 @@
 #include "utils/Retranslator.h"
 
 #include <QLabel>
+#include <QBoxLayout>
+#include <QProcess>
+#include <QPushButton>
+#include <QTimer>
 
 PackageChooserPage::PackageChooserPage( PackageChooserMode mode, QWidget* parent )
     : QWidget( parent )
@@ -44,6 +48,62 @@ PackageChooserPage::PackageChooserPage( PackageChooserMode mode, QWidget* parent
     }
 
     ui->products->setMinimumWidth( 10 * Calamares::defaultFontHeight() );
+}
+
+void
+PackageChooserPage::enableCorryRepositoryCheck()
+{
+    if ( m_corryCheck )
+    {
+        return;
+    }
+    m_corryCheck = true;
+    ui->products->setSelectionMode( QAbstractItemView::MultiSelection );
+    auto* panel = new QWidget( this );
+    auto* row = new QHBoxLayout( panel );
+    auto* status = new QLabel( tr( "Checking internet and signed repositories…" ), panel );
+    status->setWordWrap( true );
+    status->setTextFormat( Qt::PlainText );
+    auto* retry = new QPushButton( tr( "Check again" ), panel );
+    row->addWidget( status, 1 );
+    row->addWidget( retry );
+    qobject_cast< QBoxLayout* >( layout() )->insertWidget( 0, panel );
+    auto* process = new QProcess( this );
+    auto* timeout = new QTimer( process );
+    timeout->setSingleShot( true );
+    timeout->setInterval( 115000 );
+    connect( timeout, &QTimer::timeout, process, &QProcess::kill );
+    connect( retry, &QPushButton::clicked, this, [ = ]() {
+        if ( process->state() != QProcess::NotRunning )
+        {
+            return;
+        }
+        m_repositoriesReady = false;
+        emit selectionChanged();
+        retry->setEnabled( false );
+        status->setText( tr( "Checking internet and signed repositories…" ) );
+        process->start( QStringLiteral( "/usr/bin/python3" ),
+                        { QStringLiteral( "/usr/lib/corry/repository-check.py" ) } );
+        timeout->start();
+    } );
+    connect( process, QOverload< int, QProcess::ExitStatus >::of( &QProcess::finished ), this,
+             [ = ]( int code, QProcess::ExitStatus state ) {
+        timeout->stop();
+        m_repositoriesReady = code == 0 && state == QProcess::NormalExit;
+        status->setText( m_repositoriesReady
+            ? tr( "Signed repositories are reachable. Packages will be downloaded before partitioning." )
+            : tr( "Repositories are unavailable. Check your connection, system date and repository settings, then retry. Deselect additional software to continue offline." ) );
+        retry->setEnabled( true );
+        emit selectionChanged();
+    } );
+    connect( process, &QProcess::errorOccurred, this, [ = ]( QProcess::ProcessError ) {
+        timeout->stop();
+        m_repositoriesReady = false;
+        retry->setEnabled( true );
+        status->setText( tr( "Repository check failed. Retry or deselect additional software to continue offline." ) );
+        emit selectionChanged();
+    } );
+    QTimer::singleShot( 0, retry, &QPushButton::click );
 }
 
 void

@@ -16,12 +16,14 @@
 #include "ItemAppStream.h"
 #endif
 #include "PackageModel.h"
+#include "PackageChooserPage.h"
 
 #include "utils/Logger.h"
 
 #include <QtTest/QtTest>
+#include <QListView>
 
-QTEST_GUILESS_MAIN( PackageChooserTests )
+QTEST_MAIN( PackageChooserTests )
 
 PackageChooserTests::PackageChooserTests() {}
 
@@ -34,9 +36,30 @@ PackageChooserTests::initTestCase()
 }
 
 void
-PackageChooserTests::testBogus()
+PackageChooserTests::testCorryClickSelection()
 {
-    QVERIFY( true );
+    PackageListModel model( nullptr );
+    model.addPackage( PackageItem( "office", "Office", "Documents" ) );
+    model.addPackage( PackageItem( "media", "Media", "Audio and video" ) );
+    PackageChooserPage page( PackageChooserMode::OptionalMultiple );
+    page.setModel( &model );
+    QVERIFY( page.repositoriesReady() );
+    page.enableCorryRepositoryCheck();
+    QVERIFY( !page.repositoriesReady() );
+    auto* list = page.findChild< QListView* >( "products" );
+    QVERIFY( list );
+    QCOMPARE( list->selectionMode(), QAbstractItemView::MultiSelection );
+    page.resize( 800, 500 );
+    page.show();
+    // A plain click toggles each choice; Ctrl/Shift is unnecessary.
+    QTest::mouseClick( list->viewport(), Qt::LeftButton, Qt::NoModifier,
+                       list->visualRect( model.index( 0, 0 ) ).center() );
+    QTest::mouseClick( list->viewport(), Qt::LeftButton, Qt::NoModifier,
+                       list->visualRect( model.index( 1, 0 ) ).center() );
+    QCOMPARE( page.selectedPackageIds().size(), 2 );
+    QTest::mouseClick( list->viewport(), Qt::LeftButton, Qt::NoModifier,
+                       list->visualRect( model.index( 0, 0 ) ).center() );
+    QCOMPARE( page.selectedPackageIds(), QStringList { "media" } );
 }
 
 void

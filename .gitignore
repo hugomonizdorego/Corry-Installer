@@ -32,6 +32,8 @@ Makefile*
 *-build-*
 *-build
 /build
+/build-corry/
+/.venv/
 
 # QtCreator
 

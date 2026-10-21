@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Corry Debian build
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['src/**', 'config/**', 'tools/**', 'settings.conf', '.github/workflows/corry.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: ['12', '13']
+    container: debian:${{ matrix.debian }}
+    env:
+      CORRY_BUILD_TYPE: Debug
+    steps:
+      - run: apt-get update && apt-get install -y git ca-certificates
+      - uses: actions/checkout@v4
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: bash tools/install-dependencies.sh build
+      - run: python3 tools/test-profile.py
+      - run: python3 tools/test-software.py
+      - run: apt-get install -y gnupg
+      - run: python3 tools/test-apt-integration.py
+      - run: bash tools/build-corry.sh
+      - run: QT_QPA_PLATFORM=offscreen ctest --test-dir build-corry -R '^(userstest|partitionconfigtest|corrypartitiontest|packagechoosertest)$' --output-on-failure
+      - run: DESTDIR=/tmp/corry-stage cmake --install build-corry
+      - run: DESTDIR=/tmp/corry-stage-edukasaun bash tools/install-profile.sh --distro edukasaun
+      - run: DESTDIR=/tmp/corry-stage-debion bash tools/install-profile.sh --distro debion
+      - name: Package development builds
+        run: |
+          mkdir -p dist
+          for distro in edukasaun debion; do
+            release="/tmp/corry-release-$distro"
+            mkdir -p "$release"
+            cp -a /tmp/corry-stage/. "$release/"
+            cp -a "/tmp/corry-stage-$distro/." "$release/"
+            tar -I 'xz -T2 -3' -C "$release" -cf "dist/corry-$distro-debian-${{ matrix.debian }}-amd64.tar.xz" .
+          done
+          cd dist
+          sha256sum *.tar.xz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: corry-debian-${{ matrix.debian }}-amd64
+          path: dist/*
+          retention-days: 14

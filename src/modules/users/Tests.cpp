@@ -50,6 +50,7 @@ private Q_SLOTS:
 
     void testPasswordChecks();
     void testUserPassword();
+    void testCorryPassword();
 
     void testAutoLogin_data();
     void testAutoLogin();
@@ -427,6 +428,27 @@ UserTests::testUserPassword()
 }
 
 void
+UserTests::testCorryPassword()
+{
+    Config c;
+    const auto map = Calamares::YAML::load( QString( "%1/../../../config/corry/modules/users.conf" ).arg( BUILD_AS_TEST ) );
+    QVERIFY( !map.isEmpty() );
+    c.setConfigurationMap( map );
+    QCOMPARE( c.userPasswordValidity(), int( Config::PasswordValidity::Invalid ) );
+    c.setUserPassword( "a" );
+    c.setUserPasswordSecondary( "a" );
+    QCOMPARE( c.userPasswordValidity(), int( Config::PasswordValidity::Valid ) );
+    c.setUserPasswordSecondary( "b" );
+    QCOMPARE( c.userPasswordValidity(), int( Config::PasswordValidity::Invalid ) );
+    c.setUserPassword( QString::fromUtf8( "é" ) );
+    c.setUserPasswordSecondary( QString::fromUtf8( "é" ) );
+    QCOMPARE( c.userPasswordValidity(), int( Config::PasswordValidity::Valid ) );
+    c.setUserPassword( QString() );
+    c.setUserPasswordSecondary( QString() );
+    QCOMPARE( c.userPasswordValidity(), int( Config::PasswordValidity::Invalid ) );
+}
+
+void
 UserTests::testAutoLogin_data()
 {
     QTest::addColumn< QString >( "filename" );
@@ -576,7 +598,12 @@ UserTests::testUserUmask()
     QCOMPARE( c.homePermissions(), permission );
     QCOMPARE( c.homeUMask(), umask );
     // The QChar() is needed to disambiguate from the overload that takes a double
-    QCOMPARE( QStringLiteral( "%1" ).arg( umask, 3, 8, QChar( '0' ) ), umask_string );
+    // The invalid sentinel is already checked above. Qt5/Qt6 format negative
+    // integers in base 8 differently; that is not a Config behavior to test.
+    if ( umask >= 0 )
+    {
+        QCOMPARE( QStringLiteral( "%1" ).arg( umask, 3, 8, QChar( '0' ) ), umask_string );
+    }
 
     QCOMPARE( c.forbiddenLoginNames(), forbidden );
 }
