@@ -23,6 +23,14 @@ class QPushButton;
 class QComboBox;
 class QLabel;
 class QListWidget;
+class QVBoxLayout;
+
+/** Corry's shortcuts only edit the pending plan, never the disk. */
+void addPartitionRolePicker( QVBoxLayout* layout, QComboBox* mount, QComboBox* filesystem,
+                             QListWidget* flags, const QStringList& inUse );
+
+/** Legacy filesystems require a driver in the running live kernel. */
+bool legacyFilesystemAvailable( FileSystem::Type type );
 
 static QSet< FileSystem::Type > s_unmountableFS( { FileSystem::Unformatted,
                                                    FileSystem::LinuxSwap,

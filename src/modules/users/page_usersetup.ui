@@ -322,7 +322,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
    <item>
     <widget class="QLabel" name="password_label_2">
      <property name="text">
-      <string>Choose a password to keep your account safe.</string>
+      <string>Choose a password. Corry accepts at least one character; a longer password is recommended.</string>
      </property>
      <property name="wordWrap">
       <bool>false</bool>
@@ -346,7 +346,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
         </size>
        </property>
        <property name="toolTip">
-        <string>&lt;small&gt;Enter the same password twice, so that it can be checked for typing errors. A good password will contain a mixture of letters, numbers and punctuation, should be at least eight characters long, and should be changed at regular intervals.&lt;/small&gt;</string>
+        <string>&lt;small&gt;Enter the same password twice, so that it can be checked for typing errors. Corry accepts a password of one character or more. A longer password is harder to guess.&lt;/small&gt;</string>
        </property>
        <property name="echoMode">
         <enum>QLineEdit::Password</enum>
@@ -371,7 +371,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
         </size>
        </property>
        <property name="toolTip">
-        <string>&lt;small&gt;Enter the same password twice, so that it can be checked for typing errors. A good password will contain a mixture of letters, numbers and punctuation, should be at least eight characters long, and should be changed at regular intervals.&lt;/small&gt;</string>
+        <string>&lt;small&gt;Enter the same password twice, so that it can be checked for typing errors. Corry accepts a password of one character or more. A longer password is harder to guess.&lt;/small&gt;</string>
        </property>
        <property name="echoMode">
         <enum>QLineEdit::Password</enum>

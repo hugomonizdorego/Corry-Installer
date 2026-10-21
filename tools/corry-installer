@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -euo pipefail
+if ! details=$(python3 /usr/lib/corry/preflight.py 2>&1); then
+ printf '%s\n' "$details" >&2
+ # Show failures from the desktop too, without a terminal requirement.
+ if command -v zenity >/dev/null; then zenity --error --title='Corry Installer' --text="$details"; fi
+ exit 1
+fi
+if [[ $EUID == 0 ]]; then exec calamares -c /etc/calamares; fi
+exec pkexec calamares -c /etc/calamares

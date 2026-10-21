@@ -50,6 +50,7 @@ private Q_SLOTS:
 
     void testPasswordChecks();
     void testUserPassword();
+    void testCorryPassword();
 
     void testAutoLogin_data();
     void testAutoLogin();
@@ -424,6 +425,27 @@ UserTests::testUserPassword()
         QCOMPARE( spy_pwStatusChanged.count(), 3 );
         QCOMPARE( c.userPasswordValidity(), Config::PasswordValidity::Valid );
     }
+}
+
+void
+UserTests::testCorryPassword()
+{
+    Config c;
+    const auto map = Calamares::YAML::load( QString( "%1/../../../config/corry/modules/users.conf" ).arg( BUILD_AS_TEST ) );
+    QVERIFY( !map.isEmpty() );
+    c.setConfigurationMap( map );
+    QCOMPARE( c.userPasswordValidity(), int( Config::PasswordValidity::Invalid ) );
+    c.setUserPassword( "a" );
+    c.setUserPasswordSecondary( "a" );
+    QCOMPARE( c.userPasswordValidity(), int( Config::PasswordValidity::Valid ) );
+    c.setUserPasswordSecondary( "b" );
+    QCOMPARE( c.userPasswordValidity(), int( Config::PasswordValidity::Invalid ) );
+    c.setUserPassword( QString::fromUtf8( "é" ) );
+    c.setUserPasswordSecondary( QString::fromUtf8( "é" ) );
+    QCOMPARE( c.userPasswordValidity(), int( Config::PasswordValidity::Valid ) );
+    c.setUserPassword( QString() );
+    c.setUserPasswordSecondary( QString() );
+    QCOMPARE( c.userPasswordValidity(), int( Config::PasswordValidity::Invalid ) );
 }
 
 void

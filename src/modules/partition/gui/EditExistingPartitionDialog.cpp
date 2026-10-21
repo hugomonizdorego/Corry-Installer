@@ -120,7 +120,8 @@ EditExistingPartitionDialog::EditExistingPartitionDialog( PartitionCoreModule* c
     {
         // We need to ensure zfs is added to the list if the zfs module is enabled
         if ( ( fs->type() == FileSystem::Type::Zfs && Calamares::Settings::instance()->isModuleEnabled( "zfs" ) )
-             || ( fs->supportCreate() != FileSystem::cmdSupportNone && fs->type() != FileSystem::Extended ) )
+             || ( fs->supportCreate() != FileSystem::cmdSupportNone && fs->type() != FileSystem::Extended
+                  && legacyFilesystemAvailable( fs->type() ) ) )
         {
             fsNames << userVisibleFS( fs );  // For the combo box
         }
@@ -158,6 +159,8 @@ EditExistingPartitionDialog::EditExistingPartitionDialog( PartitionCoreModule* c
     m_ui->fileSystemComboBox->setEnabled( m_ui->formatRadioButton->isChecked() );
 
     setFlagList( *( m_ui->m_listFlags ), m_partition->availableFlags(), PartitionInfo::flags( m_partition ) );
+    addPartitionRolePicker( m_ui->verticalLayout, m_ui->mountPointComboBox, m_ui->fileSystemComboBox,
+                            m_ui->m_listFlags, usedMountPoints );
 }
 
 EditExistingPartitionDialog::~EditExistingPartitionDialog() {}

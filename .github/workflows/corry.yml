@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Corry Debian build
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['src/**', 'config/corry/**', 'tools/**', 'settings.conf', '.github/workflows/corry.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: ['12', '13']
+    container: debian:${{ matrix.debian }}
+    steps:
+      - run: apt-get update && apt-get install -y git ca-certificates
+      - uses: actions/checkout@v4
+      - run: bash tools/install-dependencies.sh build
+      - run: python3 tools/test-profile.py
+      - run: bash tools/build-corry.sh
+      - run: QT_QPA_PLATFORM=offscreen ctest --test-dir build-corry -R '^(userstest|partitionconfigtest|corrypartitiontest)$' --output-on-failure

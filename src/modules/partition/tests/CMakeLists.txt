@@ -78,3 +78,9 @@ calamares_add_test(
     DEFINITIONS
         ${_partition_defs}
 )
+
+calamares_add_test(
+    corrypartitiontest GUI
+    SOURCES CorryPartitionTests.cpp
+    LIBRARIES calamares_viewmodule_partition calamares::kpmcore Calamares::calamaresui
+)

@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: CC0-1.0
+---
+componentName: corry
+welcomeStyleCalamares: false
+welcomeExpandingLogo: false
+windowExpanding: normal
+windowSize: 1080px,720px
+windowPlacement: center
+sidebar: qml
+navigation: widget
+strings:
+  productName: "${NAME}"
+  shortProductName: "${NAME}"
+  version: "${VERSION_ID}"
+  shortVersion: "${VERSION_ID}"
+  versionedName: "${PRETTY_NAME}"
+  shortVersionedName: "${NAME}"
+  bootloaderEntryName: "${NAME}"
+  productUrl: https://github.com/hugomonizdorego/Corry-Installer
+  supportUrl: https://github.com/hugomonizdorego/Corry-Installer/issues
+  knownIssuesUrl: https://github.com/hugomonizdorego/Corry-Installer/issues
+  releaseNotesUrl: ""
+  donateUrl: ""
+images:
+  productIcon: corry-mark.svg
+  productLogo: corry-mark.svg
+  productWelcome: welcome.svg
+style:
+  SidebarBackground: '#142c3d'
+  SidebarText: '#bdd0dc'
+  SidebarTextCurrent: '#ffffff'
+  SidebarBackgroundCurrent: '#29495b'
+slideshow: show.qml
+slideshowAPI: 2
+uploadServer:
+  type: none

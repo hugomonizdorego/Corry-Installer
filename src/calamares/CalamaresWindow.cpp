@@ -401,7 +401,9 @@ CalamaresWindow::CalamaresWindow( QWidget* parent )
 
     // %1 is the distribution name
     CALAMARES_RETRANSLATE( const auto* branding = Calamares::Branding::instance();
-                           setWindowTitle( Calamares::Settings::instance()->isSetupMode()
+                           setWindowTitle( branding->componentName() == QStringLiteral( "corry" )
+                                               ? tr( "Corry Installer — %1" ).arg( branding->productName() )
+                                               : Calamares::Settings::instance()->isSetupMode()
                                                ? tr( "%1 Setup Program" ).arg( branding->productName() )
                                                : tr( "%1 Installer" ).arg( branding->productName() ) ); );
 
@@ -474,7 +476,9 @@ CalamaresWindow::CalamaresWindow( QWidget* parent )
                           baseWidget,
                           ::getWidgetSidebar,
                           ::getQmlSidebar,
-                          qBound( 100, Calamares::defaultFontHeight() * 12, w < windowPreferredWidth ? 100 : 190 ) );
+                          branding->componentName() == QStringLiteral( "corry" )
+                              ? qBound( 150, w / 4, 220 )
+                              : qBound( 100, Calamares::defaultFontHeight() * 12, w < windowPreferredWidth ? 100 : 190 ) );
     QWidget* navigation = flavoredWidget( branding->navigationFlavor(),
                                           ::orientation( branding->navigationSide() ),
                                           m_debugManager,

@@ -104,7 +104,8 @@ CreatePartitionDialog::CreatePartitionDialog( PartitionCoreModule* core,
     {
         // We need to ensure zfs is added to the list if the zfs module is enabled
         if ( ( fs->type() == FileSystem::Type::Zfs && Calamares::Settings::instance()->isModuleEnabled( "zfs" ) )
-             || ( fs->supportCreate() != FileSystem::cmdSupportNone && fs->type() != FileSystem::Extended ) )
+             || ( fs->supportCreate() != FileSystem::cmdSupportNone && fs->type() != FileSystem::Extended
+                  && legacyFilesystemAvailable( fs->type() ) ) )
         {
             fsNames << userVisibleFS( fs );  // This is put into the combobox
             if ( fs->type() == defaultFSType )
@@ -117,7 +118,7 @@ CreatePartitionDialog::CreatePartitionDialog( PartitionCoreModule* core,
     m_ui->fsComboBox->addItems( fsNames );
 
     // Connections
-    connect( m_ui->fsComboBox, SIGNAL( activated( int ) ), SLOT( updateMountPointUi() ) );
+    connect( m_ui->fsComboBox, SIGNAL( currentIndexChanged( int ) ), SLOT( updateMountPointUi() ) );
     connect( m_ui->extendedRadioButton, SIGNAL( toggled( bool ) ), SLOT( updateMountPointUi() ) );
 
     connect( m_ui->mountPointComboBox,
@@ -148,6 +149,8 @@ CreatePartitionDialog::CreatePartitionDialog( PartitionCoreModule* core,
                  static_cast< PartitionTable::Flags >( ~PartitionTable::Flags::Int( 0 ) ),
                  PartitionTable::Flags() );
     initPartResizerWidget( freeSpacePartition.p );
+    addPartitionRolePicker( m_ui->verticalLayout, m_ui->mountPointComboBox, m_ui->fsComboBox,
+                            m_ui->m_listFlags, usedMountPoints );
 }
 
 CreatePartitionDialog::CreatePartitionDialog( PartitionCoreModule* core,
@@ -176,6 +179,8 @@ CreatePartitionDialog::CreatePartitionDialog( PartitionCoreModule* core,
 
     setSelectedMountPoint( m_ui->mountPointComboBox, PartitionInfo::mountPoint( existingNewPartition.p ) );
     updateMountPointUi();
+    addPartitionRolePicker( m_ui->verticalLayout, m_ui->mountPointComboBox, m_ui->fsComboBox,
+                            m_ui->m_listFlags, usedMountPoints );
 }
 
 CreatePartitionDialog::~CreatePartitionDialog() {}
