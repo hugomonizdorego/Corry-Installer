@@ -88,7 +88,7 @@ class Preview(QWidget):
         self.sidebar.setContent(QUrl.fromLocalFile(str(BRAND / 'calamares-sidebar.qml')), component, obj)
         outer.addWidget(self.sidebar)
         right = QVBoxLayout(); right.setContentsMargins(36,16,36,20); right.setSpacing(12); outer.addLayout(right,1)
-        top=QHBoxLayout(); top.addWidget(label('INSTALL / '+PRODUCT,9,True)); top.addStretch(1); top.addWidget(label('DESIGN PREVIEW · SAMPLE DATA',9,color='#627a89')); right.addLayout(top)
+        top=QHBoxLayout(); heading=label('INSTALL / '+PRODUCT,9,True);heading.setWordWrap(False);top.addWidget(heading);top.addStretch(1);sample=label('DESIGN PREVIEW · SAMPLE DATA',9,color='#74717c');sample.setWordWrap(False);top.addWidget(sample);right.addLayout(top)
         self.page=QWidget(); self.layout=QVBoxLayout(self.page); self.layout.setContentsMargins(0,8,0,0);self.layout.setSpacing(18);right.addWidget(self.page,1)
         self.foot = label('Preview only. No disk is read or changed.',9,color='#526a7b'); right.addWidget(self.foot)
         nav=QHBoxLayout(); self.cancel=QPushButton('Close preview');self.cancel.clicked.connect(self.close);nav.addWidget(self.cancel);nav.addStretch()

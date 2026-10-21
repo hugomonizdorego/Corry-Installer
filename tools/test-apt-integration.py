@@ -6,10 +6,13 @@ root. No disk devices, mounts, host package installation or network are used.
 """
 from pathlib import Path
 import hashlib
+from functools import partial
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 import os
 import shutil
 import subprocess
 import tempfile
+from threading import Thread
 import types
 import yaml
 import apt_support as apt
@@ -41,10 +44,14 @@ def main():
         gpg=['gpg','--batch','--yes','--homedir',str(keyhome),'--pinentry-mode','loopback','--passphrase','']
         command(gpg+['--quick-generate-key','Corry Fixture <test@example.invalid>','rsa2048','sign','0'])
         command(gpg+['--clearsign','--output',str(repo/'InRelease'),str(repo/'Release')])
+        class QuietHandler(SimpleHTTPRequestHandler):
+            def log_message(self, *_args): pass
+        server=ThreadingHTTPServer(('127.0.0.1',0),partial(QuietHandler,directory=str(repo)))
+        Thread(target=server.serve_forever,daemon=True).start()
         payload=root/'payload';(payload/'etc/apt/sources.list.d').mkdir(parents=True);(payload/'usr/share/keyrings').mkdir(parents=True)
         with (payload/'usr/share/keyrings/corry-fixture.gpg').open('wb') as output:
             subprocess.run(gpg+['--export'],stdout=output,stderr=subprocess.DEVNULL,check=True)
-        (payload/'etc/apt/sources.list.d/test.sources').write_text(f'Types: deb\nURIs: file:{repo}\nSuites: ./\nSigned-By: /usr/share/keyrings/corry-fixture.gpg\n')
+        (payload/'etc/apt/sources.list.d/test.sources').write_text(f'Types: deb\nURIs: http://127.0.0.1:{server.server_port}/\nSuites: ./\nSigned-By: /usr/share/keyrings/corry-fixture.gpg\n')
         status=f'Package: linux-image-corry-fixture\nStatus: install ok installed\nArchitecture: {architecture}\nVersion: 1.0\nMaintainer: Corry Test <test@example.invalid>\nDescription: Kernel status fixture; no kernel is installed by this test\n\n'
         (payload/'var/lib/dpkg').mkdir(parents=True);(payload/'var/lib/dpkg/status').write_text(status)
         image=root/'filesystem.squashfs';command(['mksquashfs',str(payload),str(image),'-noappend','-processors','1','-quiet'])
@@ -66,6 +73,7 @@ def main():
         try:
             apt.prepare(lib);prepared=Path(gs['corryPrepared'])
             assert len(list((prepared/'archives').glob('*.deb')))==2,'Both app and its dependency must be downloaded'
+            server.shutdown();server.server_close()
             shutil.rmtree(repo)  # Offline installation must work with the source gone.
             apt.install(lib)
             assert (target/'usr/share/corry-test/corry-fixture-app').is_file()
@@ -73,6 +81,7 @@ def main():
             assert '--no-download' in calls[0]
             assert not prepared.exists()
         finally:
+            server.shutdown();server.server_close()
             if prepared:shutil.rmtree(prepared,ignore_errors=True)
         print('PASS: signed repository, image-based dependency resolution, two cached DEBs, source removed, offline target install and apt dependency check.')
 

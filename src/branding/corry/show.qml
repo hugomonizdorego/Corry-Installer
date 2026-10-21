@@ -27,10 +27,10 @@ Rectangle {
         Text { text: presentation.slide.description; textFormat: Text.PlainText; font.pixelSize: 15; color: "#74717c"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
         RowLayout {
             Layout.fillWidth: true
-            Button { text: "←"; Accessible.name: qsTr("Previous image"); enabled: presentation.slides.length > 1; onClicked: presentation.advance(-1) }
-            Button { text: presentation.paused ? qsTr("Play") : qsTr("Pause"); onClicked: presentation.paused = !presentation.paused }
+            SlideControl { text: "←"; Accessible.name: qsTr("Previous image"); enabled: presentation.slides.length > 1; onClicked: presentation.advance(-1) }
+            SlideControl { text: presentation.paused ? qsTr("Play") : qsTr("Pause"); onClicked: presentation.paused = !presentation.paused }
             Text { text: presentation.slides.length ? (presentation.currentSlide + 1) + " / " + presentation.slides.length : qsTr("Preparing your system"); color: "#74717c"; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true }
-            Button { text: "→"; Accessible.name: qsTr("Next image"); enabled: presentation.slides.length > 1; onClicked: presentation.advance(1) }
+            SlideControl { text: "→"; Accessible.name: qsTr("Next image"); enabled: presentation.slides.length > 1; onClicked: presentation.advance(1) }
         }
     }
 }
