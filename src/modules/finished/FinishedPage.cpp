@@ -20,6 +20,9 @@
 #include "utils/Retranslator.h"
 
 #include <QFocusEvent>
+#include <QLabel>
+#include <QIcon>
+#include <QFile>
 
 
 FinishedPage::FinishedPage( Config* config, QWidget* parent )
@@ -31,6 +34,21 @@ FinishedPage::FinishedPage( Config* config, QWidget* parent )
     ui->mainText->setAlignment( Qt::AlignCenter );
     ui->mainText->setWordWrap( true );
     ui->mainText->setOpenExternalLinks( true );
+
+    const auto* branding = Calamares::Branding::instance();
+    if ( branding->componentName() == QStringLiteral( "corry" ) )
+    {
+        // Corry: the "ready" illustration above the message.
+        const QString image = branding->componentDirectory() + QStringLiteral( "/slides/ready.svg" );
+        if ( QFile::exists( image ) )
+        {
+            auto* picture = new QLabel( this );
+            picture->setAlignment( Qt::AlignCenter );
+            picture->setPixmap( QIcon( image ).pixmap( QSize( 400, 225 ) ) );
+            ui->verticalLayout->insertWidget( ui->verticalLayout->indexOf( ui->mainText ), picture );
+        }
+        ui->mainText->setObjectName( "corryFinishedText" );
+    }
 
     connect( config,
              &Config::restartModeChanged,
@@ -86,6 +104,15 @@ FinishedPage::retranslate()
                                                  "or close the setup program.</p></body></html>",
                                                  "@tooltip" ) );
         }
+        else if ( branding->componentName() == QStringLiteral( "corry" ) )
+        {
+            ui->mainText->setText( tr( "<h1>%1 is installed.</h1>"
+                                       "<p>Corry has removed itself from the new system. Restart the computer, "
+                                       "remove the installation media when asked, and sign in with your new account.</p>"
+                                       "<p>You can also keep using the live session.</p>" )
+                                       .arg( branding->shortProductName() ) );
+            ui->restartCheckBox->setToolTip( tr( "Restart when you press Done." ) );
+        }
         else
         {
             ui->mainText->setText( tr( "<h1>All done.</h1><br/>"
@@ -113,6 +140,15 @@ FinishedPage::retranslate()
                                        "The error message was: %2.",
                                        "@info, %1 is product name with version" )
                                        .arg( branding->versionedName() )
+                                       .arg( message ) );
+        }
+        else if ( branding->componentName() == QStringLiteral( "corry" ) )
+        {
+            ui->mainText->setText( tr( "<h1>The installation stopped</h1>"
+                                       "<p>%1 could not be installed: %2.</p>"
+                                       "<p>Press <i>Show details</i> on the previous page for the full log, check the "
+                                       "disk and the installation media, then try again.</p>" )
+                                       .arg( branding->shortProductName() )
                                        .arg( message ) );
         }
         else

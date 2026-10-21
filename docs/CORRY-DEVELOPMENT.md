@@ -20,37 +20,57 @@ Any other base is refused. A derivative that rewrites `/etc/debian_version` sets
 
 ## Install into an ISO root
 
+Recommended: the Debian packages (see the README).
+
+```bash
+sudo apt install ./corry_0.1_amd64.deb ./corry-edukasaun_0.1_all.deb   # in the ISO chroot
+```
+
+| Package | Ships |
+| --- | --- |
+| `corry` | `/usr/bin/calamares` (Corry engine), private `libcalamares*`, modules, QML, `/usr/bin/corry-installer`, `/usr/lib/corry/{preflight.py,remove-calamares,corry-desktop-icon}`, `/etc/xdg/autostart/corry-desktop-icon.desktop`, `/etc/apt/apt.conf.d/80corry-remove-calamares` |
+| `corry-edukasaun`, `corry-debion` | `/etc/calamares` (settings, modules, branding from `distro.yaml`), `/usr/share/applications/corry-installer.desktop`, `/usr/bin/install-debian` → `corry-installer` |
+
+`corry` *Conflicts/Replaces/Provides* `calamares` and *Conflicts/Replaces*
+`calamares-settings-debian`; the profiles *Replace* `calamares-settings-debian` too,
+so they take over `/etc/calamares`. When apt removes Calamares:
+
+1. `postinst` runs `remove-calamares --leftovers`: every file still listed for a
+   removed Calamares package and owned by no installed package is deleted (for
+   example `/etc/xdg/autostart/calamares-desktop-icon.desktop`).
+2. The APT hook runs `remove-calamares --purge-rc` after each dpkg run and purges
+   the removed packages' records (apt reads hooks at start-up, so this happens on
+   the apt run after Corry's first installation).
+
+Script install for development:
+
 ```bash
 sudo bash tools/install-dependencies.sh build
 bash tools/build-corry.sh
 sudo bash tools/install-corry.sh build-corry
 sudo bash tools/install-profile.sh --distro edukasaun      # or debion, or --distro-dir PATH
-# Options: --image /run/live/medium/live/custom.squashfs   --autostart
-# Stage without changing the host:
-DESTDIR=/tmp/root bash tools/install-corry.sh build-corry
-DESTDIR=/tmp/root bash tools/install-profile.sh --distro edukasaun
 ```
 
-`install-corry.sh` and `install-profile.sh` both append to
-`/usr/lib/corry/manifest`; the installed system uses it to delete Corry. Branding
-is described in [BRANDING.md](BRANDING.md).
+These scripts purge Debian's Calamares first and record every installed file in
+`/usr/lib/corry/manifest`. Branding is described in [BRANDING.md](BRANDING.md).
 
-The profile does not build an ISO. The integrator provides `/etc/os-release`, the
-kernel, firmware, desktop, login manager, initramfs-tools, GRUB (`grub2-common`,
-`grub-pc-bin`, `grub-efi-amd64-bin`), and the distribution's repositories and keyrings.
-Put `grub-pc` and `grub-efi-amd64` in the ISO's package pool (`pool/`, `dists/`) so
+The ISO integrator still provides `/etc/os-release`, the kernel, firmware, desktop,
+login manager, initramfs-tools, GRUB (`grub2-common`, `grub-pc-bin`,
+`grub-efi-amd64-bin`) and the distribution's repositories and keyrings. Put
+`grub-pc` and `grub-efi-amd64` in the ISO's package pool (`pool/`, `dists/`) so
 offline installs get the full boot loader packages.
 
 ## Default installer
 
-`install-profile.sh` installs the `corry-installer` launcher, an "Install <product>"
-menu entry and a desktop icon for the live user (`/etc/skel/Desktop`). It hides
-Debian's generic `calamares` and `install-debian` entries through
-`/usr/local/share/applications` and redirects the `install-debian` command through
-`/usr/local/bin`. Packages are never modified. `--autostart` adds an XDG autostart entry.
+The packages provide an "Install <product>" menu entry, the `install-debian`
+command, and a desktop icon that `corry-desktop-icon` copies to the live user's
+desktop at login (only in a live session; Debian policy forbids packages in
+`/etc/skel`). Script installs instead hide leftover generic entries through
+`/usr/local`; `install-profile.sh --autostart` also opens Corry at login.
 
 The launcher starts in US English (`CORRY_LANG` overrides it), runs the preflight
-check, then starts Calamares as root. It prefers passwordless `sudo`, keeping the
+check, then starts the engine as root **without** `-c` (that option is for testing:
+it makes the engine look for its QML files under `/etc/calamares` and fail to start). It prefers passwordless `sudo`, keeping the
 display and PulseAudio/PipeWire environment so the background music plays and
 GParted can open; otherwise it uses `pkexec`.
 
@@ -98,15 +118,19 @@ Editing an existing partition never turns on Format automatically.
 
 ## Verification
 
-`tools/test-profile.py` (16 tests) covers the module schemas and job order, profile
+`tools/test-profile.py` (20 tests) covers the Debian packaging, the
+`remove-calamares` helper, media size advice, the module schemas and job order, profile
 choices (EFI 300 MiB, root password, welcome pages, os-prober), both distribution
 profiles and the default-installer files, branding validation, the new-distro tool,
 Debian base detection, live cleanup and complete self-removal, GRUB package
 selection (pool, online, fallback), offline/online package repair, and the
 preflight image check against a real squashfs.
 
-CI builds on `debian:stable` and `debian:testing`, runs the native user, partition
-and welcome tests, stages both profiles and uploads development archives.
+CI builds the packages on `debian:stable` and `debian:testing` (running all tests),
+installs Debian's real Calamares packages, installs Corry over them, verifies that
+nothing of Calamares is left, starts the installed Corry on Xvfb and checks it loads
+`/etc/calamares`, `/usr/share/calamares/qml` and the Corry branding, switches the
+profile, purges Corry and uploads the `.deb` files.
 
 `tools/screenshots/capture.sh BUILD DISTRO OUT` runs the real build on Xvfb and
 saves every page. It uses a screenshot-only sequence without the partition step and

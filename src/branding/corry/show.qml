@@ -40,11 +40,16 @@ Rectangle {
     Timer { interval: 9000; repeat: true; running: presentation.active && !presentation.paused && presentation.slides.length > 1; onTriggered: presentation.advance(1) }
     RowLayout {
         anchors.fill: parent; anchors.margins: 24; spacing: 32
+        // Slide images are shown in a 16:9 card (about 600x338 in the 1120x780
+        // window). Recommended images: 1600x900 JPEG/PNG, or SVG with a 16:9 viewBox.
         Rectangle {
-            Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 3; Layout.minimumHeight: 160
+            Layout.fillWidth: true; Layout.preferredWidth: 3
+            Layout.preferredHeight: Math.round(width * 9 / 16)
+            Layout.maximumHeight: parent.height
+            Layout.alignment: Qt.AlignVCenter
             radius: 20; color: "#ffffff"; border.color: "#e5e7eb"
             Image {
-                anchors.fill: parent; anchors.margins: 16
+                anchors.fill: parent; anchors.margins: 12
                 source: Qt.resolvedUrl("slides/" + presentation.slide.image)
                 fillMode: Image.PreserveAspectFit; asynchronous: true; smooth: true; mipmap: true
             }

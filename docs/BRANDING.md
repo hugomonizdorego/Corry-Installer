@@ -48,12 +48,20 @@ and music. A profile can also live outside the repository:
 | `sound.volume` | 0.0 to 1.0 (default 0.3) |
 | `slides` | At least **5** entries, each with `image` (in `slides/`), `title` and `description` |
 
-Recommended media:
+## Media sizes
 
-- Slides: 16:9, for example 1600×900 JPEG photos or SVG illustrations, under 1 MB each.
-- Welcome video: 960×540 or 1280×720 WebM (VP9), 5–15 seconds, no audio track, under 5 MB.
-- Music: Ogg Vorbis, 30–90 seconds, made to loop, under 2 MB. Use music you have the
-  rights to distribute.
+| Media | Shown in the installer | Provide | Limits checked |
+| --- | --- | --- | --- |
+| Welcome video | Fixed 560×315 frame (16:9), muted, looping | 1280×720 WebM (VP9) or MP4, 5–15 s, no audio | 16:9, at least 960×540, 3–30 s, under 10 MB |
+| Welcome image (poster) | Same 560×315 frame | 1600×900 PNG/JPEG, or SVG with a 16:9 viewBox | 16:9 |
+| Slides | 16:9 card, about 600×338 | 1600×900 JPEG/PNG photos, or SVG with a 16:9 viewBox | 16:9, at least 1280×720 for photos, under 2 MB |
+| Logo | 34×34 in the header | Square SVG (or PNG of at least 128×128) | — |
+| Music | — | Ogg Vorbis, 30–90 s, made to loop, quiet | under 5 MB |
+
+Images in another shape are letterboxed, not stretched. `corry-branding.py --check`
+and `install-profile.sh` print a warning for every file outside these limits; they
+only refuse a profile that is broken (missing files, fewer than five slides, wrong
+colors). Use only media you have the rights to distribute.
 
 `install-profile.sh` refuses a profile with fewer than five slides, missing files,
 paths outside the folder or invalid colors, and tells you which field is wrong.

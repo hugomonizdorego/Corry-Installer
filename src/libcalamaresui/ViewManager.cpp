@@ -28,6 +28,7 @@
 #include "widgets/TranslationFix.h"
 
 #include <QApplication>
+#include <QLabel>
 #include <QBoxLayout>
 #include <QClipboard>
 #include <QDialogButtonBox>
@@ -117,6 +118,78 @@ ViewManager::addViewStep( ViewStep* step )
     }
 }
 
+namespace
+{
+bool
+isCorry()
+{
+    return Calamares::Branding::instance() && Calamares::Branding::instance()->componentName() == QStringLiteral( "corry" );
+}
+
+/// Corry's heading for a page, by module name; empty for pages with their own.
+QPair< QString, QString >
+corryHeading( const QString& module )
+{
+    const auto* branding = Calamares::Branding::instance();
+    const QString product = branding ? branding->shortProductName() : QString();
+    if ( module == QStringLiteral( "locale" ) )
+    {
+        return { QCoreApplication::translate( "Corry", "Where are you?" ),
+                 QCoreApplication::translate( "Corry", "Choose your time zone. The language and number formats of the new "
+                                                       "system can be changed below." ) };
+    }
+    if ( module == QStringLiteral( "keyboard" ) )
+    {
+        return { QCoreApplication::translate( "Corry", "Choose your keyboard" ),
+                 QCoreApplication::translate( "Corry", "Pick the layout printed on your keys, then try it in the box below." ) };
+    }
+    if ( module == QStringLiteral( "partition" ) )
+    {
+        return { QCoreApplication::translate( "Corry", "Where should %1 be installed?" ).arg( product ),
+                 QCoreApplication::translate( "Corry", "Erase a disk, install next to another system, or arrange the "
+                                                       "partitions yourself or with GParted." ) };
+    }
+    if ( module == QStringLiteral( "users" ) )
+    {
+        return { QCoreApplication::translate( "Corry", "Create your account" ),
+                 QCoreApplication::translate( "Corry", "Your name, how you sign in, and the passwords for you and the "
+                                                       "administrator." ) };
+    }
+    if ( module == QStringLiteral( "summary" ) )
+    {
+        return { QCoreApplication::translate( "Corry", "Ready to install" ),
+                 QCoreApplication::translate( "Corry", "Check your choices. Nothing on your disks has changed yet." ) };
+    }
+    return {};
+}
+
+/// Wraps a page in Corry's title and subtitle, or returns it unchanged.
+QWidget*
+corryPage( ViewStep* step )
+{
+    const auto heading = corryHeading( step->moduleInstanceKey().module() );
+    if ( !isCorry() || heading.first.isEmpty() )
+    {
+        return step->widget();
+    }
+    auto* page = new QWidget;
+    page->setObjectName( QStringLiteral( "corryPage" ) );
+    auto* layout = new QVBoxLayout( page );
+    layout->setContentsMargins( 24, 18, 24, 0 );
+    layout->setSpacing( 4 );
+    auto* title = new QLabel( heading.first, page );
+    title->setObjectName( QStringLiteral( "corryPageTitle" ) );
+    auto* subtitle = new QLabel( heading.second, page );
+    subtitle->setObjectName( QStringLiteral( "corryPageSubtitle" ) );
+    subtitle->setWordWrap( true );
+    layout->addWidget( title );
+    layout->addWidget( subtitle );
+    layout->addSpacing( 8 );
+    layout->addWidget( step->widget(), 1 );
+    return page;
+}
+}  // namespace
+
 void
 ViewManager::insertViewStep( int before, ViewStep* step )
 {
@@ -138,7 +211,7 @@ ViewManager::insertViewStep( int before, ViewStep* step )
             layout->setContentsMargins( margins.width(), margins.height(), margins.width(), margins.height() );
         }
 
-        m_stack->insertWidget( before, step->widget() );
+        m_stack->insertWidget( before, corryPage( step ) );
         m_stack->setCurrentIndex( 0 );
         step->widget()->setFocus();
     }
@@ -291,27 +364,18 @@ questionBox( QWidget* parent,
              const QString& button0,
              const QString& button1 )
 {
-
-#if QT_VERSION < QT_VERSION_CHECK( 6, 0, 0 )
-    return QMessageBox::question( parent,
-                                  title,
-                                  question,
-                                  button0,
-                                  button1,
-                                  QString(),
-                                  0 /* default first button, i.e. confirm */,
-                                  1 /* escape is second button, i.e. cancel */ );
-#else
-    QMessageBox mb( QMessageBox::Question, title, question, QMessageBox::StandardButton::NoButton, parent );
-    const auto* const okButton = mb.addButton( button0, QMessageBox::AcceptRole );
-    mb.addButton( button1, QMessageBox::RejectRole );
+    // Corry's dialog has no question-mark icon; the buttons say what happens.
+    QMessageBox mb( isCorry() ? QMessageBox::NoIcon : QMessageBox::Question,
+                    title,
+                    question,
+                    QMessageBox::StandardButton::NoButton,
+                    parent );
+    auto* const okButton = mb.addButton( button0, QMessageBox::AcceptRole );
+    auto* const cancelButton = mb.addButton( button1, QMessageBox::RejectRole );
+    mb.setDefaultButton( okButton );
+    mb.setEscapeButton( cancelButton );
     mb.exec();
-    if ( mb.clickedButton() == okButton )
-    {
-        return 0;
-    }
-    return 1;  // Cancel
-#endif
+    return mb.clickedButton() == okButton ? 0 : 1;
 }
 
 void
@@ -346,6 +410,17 @@ ViewManager::next()
                       "%1 is short product name, %2 is short product name with version" );
             QString confirm
                 = settings->isSetupMode() ? tr( "&Set Up Now", "@button" ) : tr( "&Install Now", "@button" );
+            if ( isCorry() && !settings->isSetupMode() )
+            {
+                title = QCoreApplication::translate( "Corry", "Start the installation?" );
+                // Only one placeholder: QString::arg() below fills it with the product name.
+                question = QCoreApplication::translate(
+                    "Corry",
+                    "<p><b>Corry will now change your disk to install %1.</b></p>"
+                    "<p>The partitions are created and formatted as planned on the Partitions page. "
+                    "This cannot be undone.</p>" );
+                confirm = QCoreApplication::translate( "Corry", "&Install now" );
+            }
 
             const auto* branding = Calamares::Branding::instance();
             int reply = questionBox( m_widget,

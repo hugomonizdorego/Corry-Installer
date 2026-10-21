@@ -24,6 +24,7 @@
 #include "viewpages/ExecutionViewStep.h"
 
 #include <QBoxLayout>
+#include <QFrame>
 #include <QLabel>
 #include <QScrollArea>
 
@@ -44,6 +45,8 @@ SummaryPage::SummaryPage( Config* config, QWidget* parent )
     headerLabel->setText( config->message() );
     connect( config, &Config::messageChanged, headerLabel, &QLabel::setText );
     layout->addWidget( headerLabel );
+    // Corry shows its own page heading above the summary.
+    headerLabel->setVisible( Calamares::Branding::instance()->componentName() != QStringLiteral( "corry" ) );
     layout->addWidget( m_scrollArea );
     m_scrollArea->setWidgetResizable( true );
     m_scrollArea->setHorizontalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
@@ -159,6 +162,33 @@ SummaryPage::buildWidgets( Config* config, SummaryViewStep* viewstep )
             m_layout->addSpacing( SECTION_SPACING );
         }
 
+        if ( Calamares::Branding::instance()->componentName() == QStringLiteral( "corry" ) )
+        {
+            // One card per section: name on the left, details on the right.
+            auto* card = new QFrame;
+            card->setObjectName( "corryCard" );
+            auto* row = new QHBoxLayout( card );
+            row->setContentsMargins( 20, 14, 20, 14 );
+            row->setSpacing( 18 );
+            auto* name = new QLabel( title, card );
+            name->setObjectName( "corrySummaryTitle" );
+            name->setFixedWidth( 150 );
+            name->setAlignment( Qt::AlignLeft | Qt::AlignTop );
+            row->addWidget( name );
+            if ( widget )
+            {
+                row->addWidget( widget, 1 );
+            }
+            else
+            {
+                auto* body = new QLabel( text, card );
+                body->setObjectName( "corrySummaryBody" );
+                body->setWordWrap( true );
+                row->addWidget( body, 1 );
+            }
+            m_layout->addWidget( card );
+            continue;
+        }
         m_layout->addWidget( createTitleLabel( title, titleFont ) );
         m_layout->addWidget( createStepWidget( text, widget, bodyPalette ) );
     }

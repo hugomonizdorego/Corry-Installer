@@ -237,6 +237,25 @@ esac
             (folder / 'distro.yaml').write_text(yaml.safe_dump(data))
             self.assertEqual(branding.load(folder)['welcome']['video'], '')
 
+    def test_media_size_advice(self):
+        branding = self.branding()
+        self.assertEqual(branding.media_warnings(ROOT / 'config/distros/debion',
+                                                 branding.load(ROOT / 'config/distros/debion')), [])
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp) / 'mine'
+            shutil.copytree(ROOT / 'config/distros/debion', folder)
+            square = folder / 'slides/photo.png'
+            # A 800x800 PNG header is enough for the size check.
+            square.write_bytes(b'\x89PNG\r\n\x1a\n' + b'\x00\x00\x00\rIHDR' + (800).to_bytes(4, 'big') * 2 + b'\x08\x02\x00\x00\x00')
+            self.assertEqual(branding.image_size(square), (800, 800))
+            data = yaml.safe_load((folder / 'distro.yaml').read_text())
+            data['slides'][0]['image'] = 'photo.png'
+            (folder / 'distro.yaml').write_text(yaml.safe_dump(data))
+            warnings = branding.media_warnings(folder, branding.load(folder))
+            self.assertTrue(any('not 16:9' in w for w in warnings), warnings)
+            self.assertTrue(any('at least 1280x720' in w for w in warnings), warnings)
+            self.assertEqual(branding.image_size(folder / 'slides/welcome.svg'), (800.0, 450.0))
+
     def test_new_distro_tool(self):
         with tempfile.TemporaryDirectory() as temp:
             repo = Path(temp) / 'repo'

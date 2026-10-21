@@ -263,7 +263,8 @@ class Preview(QWidget):
                         ('Variant', ['Default'])], ('Try your keyboard', QLineEdit()))
 
     def page_partitions(self):
-        self.title('Where should it be installed?', 'Choose a disk, then let Corry erase it or assign partitions yourself.')
+        self.title('Where should ' + PRODUCT + ' be installed?',
+                   'Erase a disk, install next to another system, or arrange the partitions yourself or with GParted.')
         disk = QComboBox()
         disk.addItems(['Sample virtual disk  ·  /dev/vda  ·  128 GiB'])
         self.layout.addWidget(disk)

@@ -12,7 +12,10 @@ if ! details=$(/usr/bin/python3 /usr/lib/corry/preflight.py 2>&1); then
  if command -v zenity >/dev/null; then zenity --error --title='Corry Installer' --text="$details"; fi
  exit 1
 fi
-if [[ $EUID == 0 ]]; then exec /usr/bin/calamares -c /etc/calamares; fi
+# No -c: that option is for testing and makes Calamares look for its QML files
+# under /etc/calamares. Without it, /etc/calamares (settings, modules, branding)
+# and /usr/share/calamares/qml are used, as installed by the packages.
+if [[ $EUID == 0 ]]; then exec /usr/bin/calamares; fi
 # The installer runs as root but must reach the live user's display and sound
 # server (for the background music). Debian live users have passwordless sudo,
 # which can keep that environment; pkexec cannot, so it is only the fallback.
@@ -24,6 +27,6 @@ fi
 export XDG_RUNTIME_DIR=$runtime PIPEWIRE_RUNTIME_DIR=$runtime
 if sudo -n true 2>/dev/null; then
  exec sudo -n --preserve-env=DISPLAY,XAUTHORITY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,PIPEWIRE_RUNTIME_DIR,PULSE_SERVER,PULSE_COOKIE,LANG,LANGUAGE,QT_QPA_PLATFORM \
-  /usr/bin/calamares -c /etc/calamares
+  /usr/bin/calamares
 fi
-exec pkexec /usr/bin/calamares -c /etc/calamares
+exec pkexec /usr/bin/calamares

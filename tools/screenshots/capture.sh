@@ -41,13 +41,15 @@ shot 01-welcome; next
 sleep 2; shot 02-system-check; next
 shot 03-location; next
 shot 04-keyboard; next
-click 230 213; xdotool type --delay 20 'Hugo Moniz'
-click 188 429; xdotool type a; click 395 429; xdotool type a
+# Field positions below Corry's page heading.
+click 237 313; xdotool type --delay 20 'Hugo Moniz'
+click 237 529; xdotool type a; click 480 529; xdotool type a
 shot 07-users
-click 100 503; shot 08-users-admin-password; click 100 503
+click 125 603; shot 08-users-admin-password; click 125 603
 next; shot 09-summary
 next; shot 10-confirm
-click 696 423 6; shot 11-install
+# "Install now" is the default button of the confirmation dialog.
+xdotool key Return; sleep 6; shot 11-install
 sleep 10; shot 12-install-slides
 sleep 20; shot 13-finish
 echo "Screenshots written to $out"

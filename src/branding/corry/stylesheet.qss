@@ -37,3 +37,24 @@ QToolTip { color: #ffffff; background: #1d2129; border: none; padding: 7px; }
 /* Summary and other scrolling pages: page background, not the window frame grey. */
 QScrollArea { background: transparent; border: none; }
 QScrollArea > QWidget > QWidget { background: #f6f7f9; }
+/* Corry page headings (added above Location, Keyboard, Partitions, Users, Summary). */
+QWidget#corryPage { background: #f6f7f9; }
+QLabel#corryPageTitle { font-size: 22pt; font-weight: 700; color: #1d2129; }
+QLabel#corryPageSubtitle { font-size: 11pt; color: #4b5563; }
+/* Summary cards. */
+QLabel#corrySummaryTitle { font-size: 11pt; font-weight: 700; color: #1d2129; }
+QLabel#corrySummaryBody { color: #374151; }
+/* Install page. */
+QTabWidget::pane { border: none; background: transparent; }
+QLabel#exec-message { color: #4b5563; padding: 2px 0; }
+QPushButton#corryDetailsButton { padding: 5px 14px; min-height: 18px; color: #4b5563; }
+QPushButton#corryDetailsButton:checked { background: #f0ecf8; color: #6445a4; border-color: #6445a4; }
+QPlainTextEdit { background: #1d2129; color: #e5e7eb; border-radius: 12px; padding: 8px; font-family: "DejaVu Sans Mono", monospace; }
+/* Finish page. */
+QLabel#corryFinishedText { font-size: 12pt; color: #374151; }
+/* Dialogs (confirmation, errors). */
+QMessageBox { background: #ffffff; }
+QMessageBox QLabel { font-size: 11pt; color: #1d2129; }
+QMessageBox QPushButton { min-width: 110px; }
+/* Form fields are comfortable to read and type in. */
+QLineEdit { min-width: 220px; }

@@ -53,6 +53,18 @@ jobs:
           # The preflight check runs and reports the missing live image (no ISO here).
           ! /usr/lib/corry/preflight.py --config /etc/calamares 2> preflight.txt
           grep -q 'Live system image not found' preflight.txt
+      - name: Start the installed Corry on a virtual display
+        run: |
+          apt-get install -y xvfb xauth
+          # From an empty directory, so nothing from the source tree is used.
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          LANG=en_US.UTF-8 timeout 40 xvfb-run -a -s '-screen 0 1280x860x24' calamares -d > calamares.log 2>&1 || true
+          grep -E 'Using Calamares|Loaded branding' calamares.log
+          ! grep -E 'FATAL|Cowardly refusing|QML component not ready' calamares.log
+          grep -q 'Using Calamares settings file at "/etc/calamares/settings.conf"' calamares.log
+          grep -q 'Using Calamares QML directory "/usr/share/calamares/qml"' calamares.log
+          grep -q 'Using Calamares branding file at "/etc/calamares/branding/corry/branding.desc"' calamares.log
+          grep -q 'Loaded branding component "corry"' calamares.log
       - name: Switch profile, then remove Corry completely
         run: |
           cd ..

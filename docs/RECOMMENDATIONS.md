@@ -23,7 +23,9 @@ about each, and what should be added next.
 | 12 | The installed system still contains the installer (menu entries, desktop icons, `/etc/calamares`, the `calamares` package). | `corrycleanup` purges `calamares`/`calamares-settings-debian`, deletes every file in `/usr/lib/corry/manifest` and all launchers. Calamares 3.3 does not copy its log into the target, so no log is left either. |
 | 13 | GParted changes disks behind Calamares' back. | The partition page re-reads all disks when GParted closes and discards the old plan. |
 | 14 | An EFI partition without the ESP flag is not bootable. | The EFI role sets the boot/ESP flag automatically (KPMcore's Boot flag is the ESP flag on GPT); 300 MiB is proposed and can be changed. |
-| 15 | Automated full-disk encryption is not tested with Debian's initramfs/GRUB integration. | Not offered in automatic mode yet. |
+| 15 | The launcher started the engine with `-c /etc/calamares`, a testing option that makes it look for QML only in `/etc/calamares/qml`; installed systems would refuse to start. | Found by running the installed package: the launcher no longer passes `-c`; CI starts the installed package to catch this. |
+| 16 | Debian's `calamares-settings-debian` would stay next to Corry (competing `/etc/calamares`, its own desktop icon at login). | The `corry` package conflicts with and replaces it; leftovers are deleted and its record purged. |
+| 17 | Automated full-disk encryption is not tested with Debian's initramfs/GRUB integration. | Not offered in automatic mode yet. |
 
 ## Recommended next steps
 
@@ -34,8 +36,9 @@ In order of benefit for a smooth installation:
    the whole chain works, and it should gate releases.
 2. **Secure Boot.** Ship `shim-signed` and `grub-efi-amd64-signed` and install them on
    UEFI systems; many school and office computers have Secure Boot enabled.
-3. **A Debian package for Corry** (`corry`, conflicting with `calamares`) instead of
-   installing over `/usr` with a manifest. Self-removal then becomes `dpkg --purge corry`.
+3. **An APT repository** for the `corry` packages (signed with the distribution's
+   key), so live images and updates get Corry like any other package. *(The packages
+   themselves exist since 0.1.)*
 4. **Btrfs snapshots** (Snapper or Timeshift with `grub-btrfs`) so a broken update can
    be rolled back from the boot menu.
 5. **Hardware support:** detect NVIDIA/Broadcom hardware and offer the drivers when

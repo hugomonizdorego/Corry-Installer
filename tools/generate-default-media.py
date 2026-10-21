@@ -126,10 +126,10 @@ def render_video(accent, tint, target, seconds=8, fps=24):
         for n in range(count):
             # A full sine period over the clip, so the video loops seamlessly.
             svg = welcome(accent, tint, 2 * math.pi * n / count)
-            image = QImage(960, 540, QImage.Format_RGB32)
+            image = QImage(1280, 720, QImage.Format_RGB32)
             image.fill(QColor('#ffffff'))
             painter = QPainter(image)
-            QSvgRenderer(QByteArray(svg.encode())).render(painter, QRectF(0, 0, 960, 540))
+            QSvgRenderer(QByteArray(svg.encode())).render(painter, QRectF(0, 0, 1280, 720))
             painter.end()
             image.save(f'{temp}/{n:04d}.png')
         subprocess.run(['ffmpeg', '-loglevel', 'error', '-y', '-framerate', str(fps), '-i', f'{temp}/%04d.png',

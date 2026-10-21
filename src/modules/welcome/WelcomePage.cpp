@@ -35,6 +35,7 @@
 #include <QDesktopServices>
 #include <QFile>
 #include <QFocusEvent>
+#include <QIcon>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
@@ -118,6 +119,7 @@ WelcomePage::setCorryPage( const QString& page )
     }
     ui->verticalLayout->setSpacing( 18 );
     ui->verticalLayout->addStretch( 1 );
+    ui->verticalLayout->invalidate();
     auto* introduction = new QLabel( this );
     introduction->setWordWrap( true );
     introduction->setObjectName( "corryHint" );
@@ -186,7 +188,8 @@ WelcomePage::welcomeMedia()
         view->setAttribute( Qt::WA_AlwaysStackOnTop );
         view->rootContext()->setContextProperty( QStringLiteral( "corryPoster" ), QUrl::fromLocalFile( poster ) );
         view->setSource( QUrl::fromLocalFile( qml ) );
-        view->setMinimumSize( 320, 200 );
+        // Fixed 16:9 frame; see docs/BRANDING.md for the recommended media sizes.
+        view->setFixedSize( 560, 315 );
         if ( view->status() != QQuickWidget::Error )
         {
             return view;
@@ -197,7 +200,8 @@ WelcomePage::welcomeMedia()
 #endif
     auto* image = new QLabel( this );
     image->setAlignment( Qt::AlignCenter );
-    image->setPixmap( QPixmap( poster ).scaled( 560, 360, Qt::KeepAspectRatio, Qt::SmoothTransformation ) );
+    image->setFixedSize( 560, 315 );
+    image->setPixmap( QIcon( poster ).pixmap( QSize( 560, 315 ) ) );
     return image;
 }
 
@@ -279,8 +283,11 @@ WelcomePage::setupButton( Button role, const QString& url )
     QUrl u( url );
     if ( u.isValid() )
     {
-        auto size = 2 * QSize( Calamares::defaultFontHeight(), Calamares::defaultFontHeight() );
-        button->setIcon( Calamares::defaultPixmap( icon, Calamares::Original, size ) );
+        if ( m_corryPage.isEmpty() )  // Corry's buttons are text only.
+        {
+            auto size = 2 * QSize( Calamares::defaultFontHeight(), Calamares::defaultFontHeight() );
+            button->setIcon( Calamares::defaultPixmap( icon, Calamares::Original, size ) );
+        }
         connect( button, &QPushButton::clicked, [ u ]() { QDesktopServices::openUrl( u ); } );
     }
     else

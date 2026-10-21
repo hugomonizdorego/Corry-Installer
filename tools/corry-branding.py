@@ -10,6 +10,7 @@ Prints the product's short name on success.
 import json
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path, PurePosixPath
 import yaml
@@ -25,8 +26,80 @@ THEMED = ['stylesheet.qss', 'corry-mark.svg', 'calamares-sidebar.qml', 'show.qml
           'welcome-media.qml']
 
 
+# Display sizes in the 1120x780 window, and what to provide for sharp results.
+# Slides: shown in a 16:9 card of about 600x338; provide 1600x900 (minimum 1280x720).
+# Welcome video: shown at 560x315 (16:9); provide 1280x720, 5-15 s, muted.
+SLIDE_SIZE, VIDEO_SIZE = (1600, 900), (1280, 720)
+MIN_RASTER = (1280, 720)
+MAX_BYTES = {'slide': 2_000_000, 'video': 10_000_000, 'sound': 5_000_000}
+
+
 class BrandingError(ValueError):
     pass
+
+
+def image_size(path):
+    """(width, height) of a PNG, JPEG or SVG file, or None if unknown."""
+    data = Path(path).read_bytes()
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        return int.from_bytes(data[16:20], 'big'), int.from_bytes(data[20:24], 'big')
+    if data[:2] == b'\xff\xd8':
+        i = 2
+        while i + 9 < len(data):
+            if data[i] != 0xFF:
+                i += 1
+                continue
+            marker, length = data[i + 1], int.from_bytes(data[i + 2:i + 4], 'big')
+            if marker in (0xC0, 0xC1, 0xC2):
+                return int.from_bytes(data[i + 7:i + 9], 'big'), int.from_bytes(data[i + 5:i + 7], 'big')
+            i += 2 + length
+        return None
+    match = re.search(rb'viewBox="\s*[-\d.]+[ ,]+[-\d.]+[ ,]+([\d.]+)[ ,]+([\d.]+)', data[:2000])
+    return (float(match.group(1)), float(match.group(2))) if match else None
+
+
+def media_warnings(folder, data):
+    """Advice about sizes and aspect ratios; never blocks an installation."""
+    folder = Path(folder)
+    warnings = []
+
+    def aspect(size, what):
+        if size and abs(size[0] / size[1] - 16 / 9) > 0.03:
+            warnings.append(f'{what} is {size[0]:g}x{size[1]:g}, not 16:9; it will be letterboxed.')
+
+    for slide in data['slides']:
+        path = folder / 'slides' / slide['image']
+        size = image_size(path)
+        aspect(size, 'Slide ' + slide['image'])
+        if size and path.suffix.lower() != '.svg' and (size[0] < MIN_RASTER[0] or size[1] < MIN_RASTER[1]):
+            warnings.append(f'Slide {slide["image"]} is {size[0]}x{size[1]}; use at least '
+                            f'{MIN_RASTER[0]}x{MIN_RASTER[1]} (recommended {SLIDE_SIZE[0]}x{SLIDE_SIZE[1]}).')
+        if path.stat().st_size > MAX_BYTES['slide']:
+            warnings.append(f'Slide {slide["image"]} is larger than 2 MB.')
+    aspect(image_size(folder / data['welcome']['image']), 'Welcome image')
+    video = data['welcome']['video']
+    if video:
+        path = folder / video
+        if path.stat().st_size > MAX_BYTES['video']:
+            warnings.append('The welcome video is larger than 10 MB.')
+        if shutil.which('ffprobe'):
+            probe = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+                                    'stream=width,height:format=duration', '-of', 'default=nw=1', str(path)],
+                                   stdout=subprocess.PIPE, text=True).stdout
+            info = dict(line.split('=', 1) for line in probe.splitlines() if '=' in line)
+            if info.get('width') and info.get('height'):
+                size = (int(info['width']), int(info['height']))
+                aspect(size, 'The welcome video')
+                if size[1] < 540:
+                    warnings.append(f'The welcome video is {size[0]}x{size[1]}; use {VIDEO_SIZE[0]}x{VIDEO_SIZE[1]}.')
+            try:
+                if not 3 <= float(info.get('duration', 8)) <= 30:
+                    warnings.append('The welcome video should last 5 to 15 seconds (it loops).')
+            except ValueError:
+                pass
+    if data['sound']['file'] and (folder / data['sound']['file']).stat().st_size > MAX_BYTES['sound']:
+        warnings.append('The background music is larger than 5 MB.')
+    return warnings
 
 
 def local_file(folder, value, kinds, what):
@@ -169,12 +242,16 @@ def main(argv):
     try:
         if len(argv) == 2 and argv[0] == '--check':
             data = load(argv[1])
+            for warning in media_warnings(argv[1], data):
+                print('Warning: ' + warning, file=sys.stderr)
             print(f'{data["name"]}: OK ({len(data["slides"])} slides, video: {data["welcome"]["video"] or "none"}, '
                   f'sound: {data["sound"]["file"] or "none"})')
             return 0
         if len(argv) != 4:
             print(__doc__, file=sys.stderr)
             return 2
+        for warning in media_warnings(argv[0], load(argv[0])):
+            print('Branding warning: ' + warning, file=sys.stderr)
         print(apply(*argv))
         return 0
     except BrandingError as exc:

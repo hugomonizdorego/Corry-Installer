@@ -3,6 +3,22 @@
 
 ## 0.1 — in development
 
+### Packages and design (latest)
+
+- Debian packages: `corry`, `corry-edukasaun`, `corry-debion`. Installing them with
+  apt removes Debian's `calamares` and `calamares-settings-debian`; leftovers are
+  deleted and their records purged. Corry becomes the default installer.
+- Fixed a start-up failure on installed systems (launcher used the testing option `-c`).
+- Corry headings on Location, Keyboard, Partitions, Users and Summary; summary cards;
+  borderless installation page with *Show details*; new finish page; confirmation
+  dialog without the question-mark icon; text-only welcome buttons.
+- Fixed media sizes: welcome video 560×315 (16:9), slides in a 16:9 card;
+  `corry-branding.py` warns about sizes, ratios and file sizes. Default welcome
+  videos are now 1280×720.
+- Desktop icon for the live user via an autostart helper (no `/etc/skel` files).
+
+### First 0.1 changes
+
 First numbered Corry release, based on Calamares 3.3.15, for Edukasaun OS and
 DebION GNU/Linux on Debian stable (13) and Debian testing.
 

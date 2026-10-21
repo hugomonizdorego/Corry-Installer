@@ -52,52 +52,71 @@ All DebION GNU/Linux screenshots are in [`docs/screenshots`](docs/screenshots).
   and calm background music that can be muted.
 - **Leaves no trace.** After installation the new system contains no Corry or
   Calamares files, packages, launchers, menu entries or configuration.
+- **Replaces Calamares.** The `corry` package removes Debian's `calamares` and
+  `calamares-settings-debian` completely and becomes the default installer.
+- **Its own look.** Page headings, summary cards, a borderless installation page with
+  *Show details*, a finish page and a confirmation dialog designed for Corry.
 - **Easy branding:** one `distro.yaml` per distribution holds names, colors, links,
   video, music and slides. `tools/new-distro.py` creates a new profile in one command.
 - US English (`en_US.UTF-8`) by default; other languages can be chosen on the welcome page.
 
-## Build and integrate
+## Install the Debian packages
 
-Run inside a disposable Debian stable or testing machine, or in the ISO build chroot:
+Corry is packaged as three `.deb` files (built by CI for Debian stable and
+testing, see *Actions → Artifacts*, or locally with `dpkg-buildpackage -us -uc -b`):
+
+| Package | Contents |
+| --- | --- |
+| `corry_0.1_<arch>.deb` | The installer engine, launcher, preflight check and Calamares clean-up |
+| `corry-edukasaun_0.1_all.deb` | Edukasaun OS profile: branding, settings, menu entry |
+| `corry-debion_0.1_all.deb` | DebION GNU/Linux profile (installing one profile removes the other) |
+
+In the live system or the ISO build chroot:
 
 ```bash
-sudo bash tools/install-dependencies.sh build
-bash tools/build-corry.sh
-python3 tools/test-profile.py
-QT_QPA_PLATFORM=offscreen ctest --test-dir build-corry \
-  -R '^(userstest|partitionconfigtest|corrypartitiontest|welcometest)$' --output-on-failure
-sudo bash tools/install-corry.sh build-corry          # records every file for self-removal
-sudo bash tools/install-profile.sh --distro edukasaun # or: --distro debion
+sudo apt install ./corry_0.1_amd64.deb ./corry-edukasaun_0.1_all.deb
 ```
 
-The scripts detect the Debian base from `/etc/debian_version` (`13.x` is stable,
-`forky/sid` or `14.x` is testing). If a derivative changes that file, set
-`CORRY_DEBIAN_BASE=stable` or `CORRY_DEBIAN_BASE=testing`. Both bases use Qt 6.
+Use `apt`, not `dpkg -i`: apt resolves the dependencies and **removes Debian's
+`calamares` and `calamares-settings-debian`** (Corry conflicts with and replaces
+them). Corry's `postinst` then deletes every file they left behind (such as their
+desktop autostart entry), and an APT hook purges their package records after the
+next dpkg run, so nothing of Calamares remains to conflict. Corry then is the
+default installer: the "Install Edukasaun OS" menu entry, a desktop icon in the live
+session, and Debian's `install-debian` command all open Corry.
 
-Always install with `tools/install-corry.sh`, not plain `cmake --install`: it
-writes `/usr/lib/corry/manifest`, which the installed system uses to remove Corry
-completely.
+`sudo apt purge corry corry-edukasaun` removes Corry completely. On the installed
+system, Corry's `corrycleanup` job purges these packages automatically.
 
-`install-profile.sh` makes Corry the live session's default installer: an
-"Install Edukasaun OS" / "Install DebION GNU/Linux" menu entry, a desktop icon for
-the live user, Debian's generic `calamares`/`install-debian` entries hidden, and
-the `install-debian` command redirected to Corry (`--autostart` also opens Corry
-when the live session starts). Do not add `calamares-settings-debian` to the image.
+## Build from source
 
-The live image must contain everything the installed system needs: a Debian
-kernel, firmware, desktop, login manager, initramfs-tools, `grub2-common`,
-`grub-pc-bin` and `grub-efi-amd64-bin` (ideally also `grub-pc`/`grub-efi-amd64` in the
-ISO's package pool), plus Corry's runtime dependencies
-(`tools/install-dependencies.sh runtime`, which includes GParted and QtMultimedia).
+Run inside a disposable Debian stable or testing machine:
+
+```bash
+sudo apt install dpkg-dev debhelper && sudo apt build-dep ./
+dpkg-buildpackage -us -uc -b            # builds and tests; packages land in ../
+```
+
+Without packages (development only): `tools/install-dependencies.sh build`,
+`tools/build-corry.sh`, `sudo tools/install-corry.sh build-corry`,
+`sudo tools/install-profile.sh --distro edukasaun`. These scripts also purge
+Debian's Calamares first and record every file in `/usr/lib/corry/manifest` for
+self-removal. The base is detected from `/etc/debian_version` (`13.x` stable,
+`forky/sid` or `14.x` testing); override with `CORRY_DEBIAN_BASE`.
+
+The live image must contain what the installed system needs: a Debian kernel,
+firmware, desktop, login manager, initramfs-tools, `grub2-common`, `grub-pc-bin` and
+`grub-efi-amd64-bin` (ideally `grub-pc`/`grub-efi-amd64` in the ISO's package pool).
 
 - [Integration and testing guide](docs/CORRY-DEVELOPMENT.md)
-- [Branding guide: edit or add a distribution](docs/BRANDING.md)
+- [Branding guide: edit or add a distribution, media sizes](docs/BRANDING.md)
 - [Calamares review and recommendations](docs/RECOMMENDATIONS.md)
 - [Changelog](CHANGELOG-CORRY.md)
 
-CI builds Corry on `debian:stable` and `debian:testing` and uploads development
-archives for both distributions with SHA256 checksums. They are staged file trees
-for ISO-build testing, not signed Debian packages or tested release ISOs.
+CI builds the packages on `debian:stable` and `debian:testing`, installs Debian's
+real `calamares` + `calamares-settings-debian`, installs Corry over them, checks that
+nothing of Calamares is left, starts the installed Corry on a virtual display,
+switches profile, purges Corry, and uploads the `.deb` files.
 
 ## Licensing
 

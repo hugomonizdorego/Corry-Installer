@@ -33,6 +33,7 @@
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QToolBar>
@@ -95,18 +96,41 @@ ExecutionViewStep::ExecutionViewStep( QObject* parent )
     bottomLayout->addLayout( barLayout );
     bottomLayout->addWidget( m_label );
 
-    QToolBar* toolBar = new QToolBar;
-    const auto logButtonIcon = QIcon::fromTheme( "utilities-terminal" );
-    auto toggleLogAction = toolBar->addAction(
-        Branding::instance()->image(
-            { "utilities-log-viewer", "utilities-terminal", "text-x-log", "text-x-changelog", "preferences-log" },
-            QSize( 32, 32 ) ),
-        "Toggle log" );
-    auto toggleLogButton = dynamic_cast< QToolButton* >( toolBar->widgetForAction( toggleLogAction ) );
-    connect( toggleLogButton, &QToolButton::clicked, this, &ExecutionViewStep::toggleLog );
-
     barLayout->addWidget( m_progressBar );
-    barLayout->addWidget( toolBar );
+    if ( Branding::instance()->componentName() == QStringLiteral( "corry" ) )
+    {
+        // Corry: borderless slideshow, a text button for the details, and the
+        // current step above a slim progress bar.
+        m_tab_widget->setDocumentMode( true );
+        layout->setContentsMargins( 24, 16, 24, 12 );
+        bottomLayout->removeWidget( m_label );
+        bottomLayout->insertWidget( 1, m_label );
+        auto* details = new QPushButton( m_widget );
+        details->setObjectName( "corryDetailsButton" );
+        details->setCheckable( true );
+        CALAMARES_RETRANSLATE( details->setText( tr( "Show details" ) ); );
+        connect( details,
+                 &QPushButton::toggled,
+                 this,
+                 [ this, details ]( bool shown )
+                 {
+                     details->setText( shown ? tr( "Hide details" ) : tr( "Show details" ) );
+                     toggleLog();
+                 } );
+        barLayout->addWidget( details );
+    }
+    else
+    {
+        QToolBar* toolBar = new QToolBar;
+        auto toggleLogAction = toolBar->addAction(
+            Branding::instance()->image(
+                { "utilities-log-viewer", "utilities-terminal", "text-x-log", "text-x-changelog", "preferences-log" },
+                QSize( 32, 32 ) ),
+            "Toggle log" );
+        auto toggleLogButton = dynamic_cast< QToolButton* >( toolBar->widgetForAction( toggleLogAction ) );
+        connect( toggleLogButton, &QToolButton::clicked, this, &ExecutionViewStep::toggleLog );
+        barLayout->addWidget( toolBar );
+    }
 
     connect( JobQueue::instance(), &JobQueue::progress, this, &ExecutionViewStep::updateFromJobQueue );
 }
