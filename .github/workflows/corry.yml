@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: ['claude/**', 'codex/**']
+    tags: ['v*']
     paths: ['src/**', 'config/**', 'tools/**', 'debian/**', 'settings.conf', 'VERSION', 'CMakeLists.txt', '.github/workflows/corry.yml']
   pull_request:
     paths: ['src/**', 'config/**', 'tools/**', 'debian/**', 'settings.conf', 'VERSION', 'CMakeLists.txt', '.github/workflows/corry.yml']
@@ -15,8 +16,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Edukasaun OS and DebION are based on Debian stable and Debian testing.
-        debian: ['stable', 'testing']
+        include:
+          # Edukasaun OS is based on Debian stable, DebION GNU/Linux on Debian testing.
+          - debian: stable
+            distro: edukasaun
+            product: Edukasaun OS
+          - debian: testing
+            distro: debion
+            product: DebION GNU/Linux
     container: debian:${{ matrix.debian }}
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -28,17 +35,26 @@ jobs:
         run: apt-get install -y dpkg-dev debhelper && apt-get build-dep -y ./
       - name: Build the Debian packages (runs the native and profile tests)
         run: dpkg-buildpackage -us -uc -b
-      - name: Install Debian's Calamares first, as a live image would have it
+      - name: Collect the ${{ matrix.product }} package with the install script
         run: |
-          apt-get install -y calamares calamares-settings-debian
-          test -f /etc/xdg/autostart/calamares-desktop-icon.desktop || ls /etc/xdg/autostart
-      - name: Install Corry over it; Calamares must be removed
+          version=$(cat VERSION)
+          mkdir -p dist
+          cp ../corry-${{ matrix.distro }}_*.deb dist/
+          ! ls ../*dbgsym* 2>/dev/null
+          cp tools/install-corry-debs.sh dist/
+          printf '%s\n' "Corry $version for ${{ matrix.product }} (Debian ${{ matrix.debian }})" '' \
+            'Install (needs internet for the dependencies):' \
+            '  sudo sh install-corry-debs.sh' \
+            'Do not use "dpkg -i": it does not install the dependencies.' \
+            'An "Install ${{ matrix.product }}" shortcut appears on every desktop.' > dist/INSTALL.txt
+          cd dist && sha256sum *.deb > SHA256SUMS
+      - name: Prepare a live-like system with Debian's Calamares and a desktop user
         run: |
-          cd ..
-          apt-get install -y ./corry_*.deb ./corry-edukasaun_*_all.deb
-          # The APT hook purges leftovers on the next dpkg run.
-          apt-get install -y --reinstall ./corry-edukasaun_*_all.deb
-      - name: Verify nothing of Debian's Calamares is left
+          apt-get install -y calamares calamares-settings-debian xdg-user-dirs
+          useradd -m -s /bin/bash live
+      - name: Install Corry with the script; Calamares must be removed
+        run: sh dist/install-corry-debs.sh
+      - name: Verify the installation
         run: |
           set -x
           for package in calamares calamares-settings-debian; do
@@ -47,9 +63,14 @@ jobs:
           done
           ! ls /etc/xdg/autostart/calamares-desktop-icon.desktop /usr/share/applications/install-debian.desktop 2>/dev/null
           test "$(readlink -f /usr/bin/install-debian)" = /usr/bin/corry-installer
-          dpkg-query -S /etc/calamares/settings.conf | grep -q '^corry-edukasaun:'
-          grep -q 'corryPage: greeting' /etc/calamares/modules/welcome.conf
-          dpkg --verify corry corry-edukasaun
+          dpkg-query -S /etc/calamares/settings.conf | grep -q '^corry-${{ matrix.distro }}:'
+          grep -q 'productName: ${{ matrix.product }}' /etc/calamares/branding/corry/branding.desc
+          dpkg --verify corry-${{ matrix.distro }}
+          # The desktop shortcut is there for the existing user, executable and owned by them.
+          shortcut=/home/live/Desktop/corry-installer.desktop
+          test -x "$shortcut" && test "$(stat -c %U "$shortcut")" = live
+          grep -q 'Name=Install ${{ matrix.product }}' "$shortcut"
+          test -f /usr/share/icons/hicolor/scalable/apps/corry-installer.svg
           # The preflight check runs and reports the missing live image (no ISO here).
           ! /usr/lib/corry/preflight.py --config /etc/calamares 2> preflight.txt
           grep -q 'Live system image not found' preflight.txt
@@ -65,36 +86,50 @@ jobs:
           grep -q 'Using Calamares QML directory "/usr/share/calamares/qml"' calamares.log
           grep -q 'Using Calamares branding file at "/etc/calamares/branding/corry/branding.desc"' calamares.log
           grep -q 'Loaded branding component "corry"' calamares.log
-      - name: Switch profile, then remove Corry completely
+      - name: Remove Corry completely, shortcut included
         run: |
-          cd ..
-          apt-get install -y ./corry-debion_*_all.deb
-          ! dpkg-query -W -f='${db:Status-Abbrev}' corry-edukasaun 2>/dev/null | grep -q '^ii'
-          grep -q 'DebION' /etc/calamares/branding/corry/branding.desc
-          apt-get purge -y corry corry-debion
-          ! ls -d /etc/calamares /usr/lib/corry /usr/share/calamares /etc/apt/apt.conf.d/80corry-remove-calamares 2>/dev/null
-      - name: Collect packages (no debug symbols) with the install script
-        run: |
-          mkdir -p dist
-          cp ../corry_*.deb ../corry-edukasaun_*.deb ../corry-debion_*.deb dist/
-          cp tools/install-corry-debs.sh dist/
-          printf '%s\n' 'Install Corry (needs internet for the dependencies):' \
-            '  sudo sh install-corry-debs.sh edukasaun    (or: debion)' \
-            'Do not use "dpkg -i": it does not install the dependencies.' > dist/INSTALL.txt
-          cd dist && sha256sum *.deb > SHA256SUMS
+          apt-get purge -y corry-${{ matrix.distro }}
+          ! ls -d /etc/calamares /usr/lib/corry /usr/share/calamares /etc/apt/apt.conf.d/80corry-remove-calamares \
+            /home/live/Desktop/corry-installer.desktop 2>/dev/null
       - name: Repair a failed "dpkg -i" with the install script
         run: |
-          # Remove one of Corry's dependencies (autoremove would try to remove
-          # sudo, which refuses in a container), then do what users did:
-          # dpkg -i without the dependencies fails half-way.
+          # Remove one dependency, then do what users did: dpkg -i fails half-way.
           apt-get remove -y zenity
-          dpkg -i dist/corry_*.deb dist/corry-edukasaun_*.deb || true
-          sh dist/install-corry-debs.sh edukasaun
-          dpkg-query -W -f='${db:Status-Abbrev}' corry corry-edukasaun | grep -qx 'ii ii '
-          /usr/lib/corry/preflight.py --config /etc/calamares 2>&1 | grep -q 'Live system image not found'
-          apt-get purge -y corry corry-edukasaun
+          dpkg -i dist/corry-${{ matrix.distro }}_*.deb || true
+          sh dist/install-corry-debs.sh
+          dpkg-query -W -f='${db:Status-Abbrev}' corry-${{ matrix.distro }} | grep -qx 'ii '
+          apt-get purge -y corry-${{ matrix.distro }}
       - uses: actions/upload-artifact@v4
         with:
-          name: corry-0.1-debian-${{ matrix.debian }}-amd64-debs
+          name: corry-${{ matrix.distro }}-debian-${{ matrix.debian }}-amd64
           path: dist/*
-          retention-days: 14
+          retention-days: 30
+
+  release:
+    # Push a tag such as v0.2 to publish both packages as a GitHub release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(cat VERSION)
+          mkdir -p release
+          for distro in edukasaun debion; do
+            cp artifacts/corry-$distro-*/corry-${distro}_*.deb release/
+          done
+          cp tools/install-corry-debs.sh release/
+          cd release && sha256sum *.deb > SHA256SUMS && cd ..
+          # Release notes: the newest section of the changelog.
+          awk '/^## /{n++} n==1' CHANGELOG-CORRY.md > notes.md
+          prerelease=--prerelease
+          case $version in 1.*|[2-9]*) prerelease=;; esac
+          gh release create "$GITHUB_REF_NAME" release/* --title "Corry $version" --notes-file notes.md $prerelease

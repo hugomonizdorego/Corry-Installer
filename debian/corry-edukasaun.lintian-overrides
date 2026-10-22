@@ -1,4 +1,9 @@
-# corry-installer comes from the corry package, which this package depends on.
-corry-edukasaun: desktop-command-not-in-package corry-installer [usr/share/applications/corry-installer.desktop]
-# Compatibility link for Debian's install-debian command.
+# Calamares' libraries are private to the installer.
+corry-edukasaun: package-name-doesnt-match-sonames *
+corry-edukasaun: no-symbols-control-file *
+# Upstream Calamares test helper, not run on installed systems.
+corry-edukasaun: script-not-executable [usr/lib/*/calamares/modules/unpackfs/runtests.sh]
+corry-edukasaun: no-manual-page [usr/bin/corry-installer]
 corry-edukasaun: no-manual-page [usr/bin/install-debian]
+# Calamares ships this translation; the code is valid for Qt.
+corry-edukasaun: unknown-locale-code ja-Hira *

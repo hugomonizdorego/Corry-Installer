@@ -126,19 +126,12 @@ def install_from_network(root, package):
             backup.rename(resolv)
 
 
-def run():
-    root = libcalamares.globalstorage.value("rootMountPoint")
-    if not root or root == "/":
-        return ("Invalid target", "The boot loader packages require a mounted target system.")
-    firmware = libcalamares.globalstorage.value("firmwareType")
-    arch = subprocess.run(["dpkg", "--print-architecture"], stdout=subprocess.PIPE,
-                          text=True).stdout.strip()
-    package, platform = wanted(firmware, arch)
-    if not package:
-        libcalamares.utils.warning("No GRUB package is known for {} on {}.".format(firmware, arch))
-        return None
-    if installed(root, package):
-        return None
+# Signed GRUB and shim let the installed system start with UEFI Secure Boot on.
+SECURE_BOOT = {"amd64": ("shim-signed", "grub-efi-amd64-signed")}
+
+
+def obtain(root, package):
+    """Install a package from the boot medium, else online. None, or the problem."""
     medium = libcalamares.job.configuration.get("medium", "/run/live/medium")
     sources = medium_sources(medium, package)
     problem = install_from_medium(root, medium, sources, package) if sources else \
@@ -151,6 +144,38 @@ def run():
         if network_problem is None:
             return None
         problem += "; online: " + network_problem
+    return problem
+
+
+def secure_boot_packages(root, firmware, arch):
+    """Best effort: without them the system still boots when Secure Boot is off."""
+    if firmware != "efi" or not libcalamares.job.configuration.get("secureBoot", True):
+        return
+    for package in SECURE_BOOT.get(arch, ()):
+        if installed(root, package):
+            continue
+        problem = obtain(root, package)
+        if problem:
+            libcalamares.utils.warning("Secure Boot support not installed ({}): {}. Turn Secure Boot off "
+                                       "in the firmware settings if the computer does not start.".format(package, problem))
+            return
+
+
+def run():
+    root = libcalamares.globalstorage.value("rootMountPoint")
+    if not root or root == "/":
+        return ("Invalid target", "The boot loader packages require a mounted target system.")
+    firmware = libcalamares.globalstorage.value("firmwareType")
+    arch = subprocess.run(["dpkg", "--print-architecture"], stdout=subprocess.PIPE,
+                          text=True).stdout.strip()
+    package, platform = wanted(firmware, arch)
+    if not package:
+        libcalamares.utils.warning("No GRUB package is known for {} on {}.".format(firmware, arch))
+        return None
+    problem = None if installed(root, package) else obtain(root, package)
+    if problem is None:
+        secure_boot_packages(root, firmware, arch)
+        return None
     # grub-install only needs the platform files. Without the package the system
     # still boots, but GRUB is not updated automatically. Warn instead of failing.
     if (Path(root) / "usr/lib/grub" / platform).is_dir():
@@ -158,4 +183,4 @@ def run():
         return None
     return ("Boot loader files are missing",
             "The installed system has no GRUB files for {} and {}. "
-            "Add {} or its -bin package to the live image.".format(platform, problem, package))
+            "Connect to the internet, or add {} to the live image or its package pool.".format(platform, problem, package))

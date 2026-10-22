@@ -1,0 +1,8 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -e
+if [ "$1" = remove ] || [ "$1" = purge ]; then
+	/usr/lib/corry/corry-desktop-icon --remove-all || true
+fi
+#DEBHELPER#
+exit 0

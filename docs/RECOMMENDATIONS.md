@@ -34,8 +34,9 @@ In order of benefit for a smooth installation:
 1. **VM test matrix in CI.** Boot a real Edukasaun OS and DebION ISO in QEMU with
    SeaBIOS and OVMF, install unattended and reboot. This is the only way to prove
    the whole chain works, and it should gate releases.
-2. **Secure Boot.** Ship `shim-signed` and `grub-efi-amd64-signed` and install them on
-   UEFI systems; many school and office computers have Secure Boot enabled.
+2. **Secure Boot on real firmware.** Since 0.2 `shim-signed` and
+   `grub-efi-amd64-signed` are installed on UEFI; prove it on real computers and
+   make shim the removable-media fallback. See [ROADMAP.md](ROADMAP.md).
 3. **An APT repository** for the `corry` packages (signed with the distribution's
    key), so live images and updates get Corry like any other package. *(The packages
    themselves exist since 0.1.)*

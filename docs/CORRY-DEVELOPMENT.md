@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: CC0-1.0 -->
-# Corry 0.1 — integrating with Edukasaun OS and DebION GNU/Linux
+# Corry 0.2 — integrating with Edukasaun OS and DebION GNU/Linux
 
 Corry is in development. It is a fork of Calamares 3.3.15: the installation
 engine is Calamares, the Debian configuration is adapted from Catalyst, and the
@@ -23,24 +23,25 @@ Any other base is refused. A derivative that rewrites `/etc/debian_version` sets
 Recommended: the Debian packages (see the README).
 
 ```bash
-sudo apt install ./corry_0.1_amd64.deb ./corry-edukasaun_0.1_all.deb   # in the ISO chroot
+sudo apt install ./corry-edukasaun_0.2_amd64.deb      # Edukasaun OS, Debian stable chroot
+sudo apt install ./corry-debion_0.2_amd64.deb         # DebION GNU/Linux, Debian testing chroot
 ```
 
-| Package | Ships |
-| --- | --- |
-| `corry` | `/usr/bin/calamares` (Corry engine), private `libcalamares*`, modules, QML, `/usr/bin/corry-installer`, `/usr/lib/corry/{preflight.py,remove-calamares,corry-desktop-icon}`, `/etc/xdg/autostart/corry-desktop-icon.desktop`, `/etc/apt/apt.conf.d/80corry-remove-calamares` |
-| `corry-edukasaun`, `corry-debion` | `/etc/calamares` (settings, modules, branding from `distro.yaml`), `/usr/share/applications/corry-installer.desktop`, `/usr/bin/install-debian` → `corry-installer` |
+Each package ships the whole installer: `/usr/bin/calamares` (Corry engine),
+private `libcalamares*`, modules, QML, `/usr/bin/corry-installer`,
+`/usr/lib/corry/{preflight.py,remove-calamares,corry-desktop-icon}`, the APT hook,
+the autostart helper, and its distribution's `/etc/calamares`, menu entry, icon and
+`/usr/bin/install-debian` link. The two packages conflict with each other, with
+Corry 0.1's `corry` and profile packages, and with Debian's `calamares` and
+`calamares-settings-debian`, and replace all of them. When apt removes Calamares:
 
-`corry` *Conflicts/Replaces/Provides* `calamares` and *Conflicts/Replaces*
-`calamares-settings-debian`; the profiles *Replace* `calamares-settings-debian` too,
-so they take over `/etc/calamares`. When apt removes Calamares:
-
-1. `postinst` runs `remove-calamares --leftovers`: every file still listed for a
-   removed Calamares package and owned by no installed package is deleted (for
-   example `/etc/xdg/autostart/calamares-desktop-icon.desktop`).
-2. The APT hook runs `remove-calamares --purge-rc` after each dpkg run and purges
-   the removed packages' records (apt reads hooks at start-up, so this happens on
-   the apt run after Corry's first installation).
+1. `postinst` runs `remove-calamares --leftovers` (deletes files Calamares left
+   behind) and `corry-desktop-icon --all-users` (puts the shortcut on every user's
+   desktop, executable and trusted, and marks it done for that user).
+2. The APT hook runs `remove-calamares --purge-rc` after each later dpkg run and
+   purges the removed packages' records.
+3. Users created later get the shortcut once at their first login (XDG autostart).
+4. `prerm` removes the shortcuts when the package is removed.
 
 Script install for development:
 

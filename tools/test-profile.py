@@ -98,7 +98,7 @@ class SequenceTests(unittest.TestCase):
         self.assertNotIn('internet', check['requirements']['required'])
         grub = yaml.safe_load((modules / 'grubcfg.conf').read_text())
         self.assertFalse(grub['defaults']['GRUB_DISABLE_OS_PROBER'])
-        self.assertEqual((ROOT / 'VERSION').read_text().strip(), '0.1')
+        self.assertEqual((ROOT / 'VERSION').read_text().strip(), '0.2')
 
 
 class BrandingTests(unittest.TestCase):
@@ -131,7 +131,7 @@ class BrandingTests(unittest.TestCase):
                 accent = source['colors']['accent']
                 for themed in ['stylesheet.qss', 'show.qml', 'corry-mark.svg', 'calamares-sidebar.qml']:
                     self.assertIn(accent, (brand / themed).read_text())
-                self.assertIn('Corry 0.1', (brand / 'calamares-sidebar.qml').read_text())
+                self.assertIn('Corry ' + (ROOT / 'VERSION').read_text().strip(), (brand / 'calamares-sidebar.qml').read_text())
                 self.assertFalse((config / 'modules/packagechooser.conf').exists())
                 grub = yaml.safe_load((config / 'modules/corrygrub.conf').read_text())
                 self.assertEqual(grub['medium'], '/tmp')
@@ -158,30 +158,79 @@ class BrandingTests(unittest.TestCase):
         with stage('debion', '--package') as temp:
             root = Path(temp)
             files = sorted(str(p.relative_to(root)) for p in root.rglob('*') if p.is_file() or p.is_symlink())
-            self.assertTrue(all(f.startswith(('etc/calamares/', 'usr/share/applications/', 'usr/bin/install-debian'))
+            self.assertTrue(all(f.startswith(('etc/calamares/', 'usr/share/applications/', 'usr/bin/install-debian',
+                                              'usr/share/icons/hicolor/scalable/apps/corry-installer.svg'))
                                 for f in files), files)
             self.assertEqual(os.readlink(root / 'usr/bin/install-debian'), 'corry-installer')
             self.assertIn('Name=Install DebION GNU/Linux', (root / 'usr/share/applications/corry-installer.desktop').read_text())
 
     def test_debian_packaging(self):
         control = (ROOT / 'debian/control').read_text()
-        engine = control.split('\nPackage: ')[1]
-        for field in ['Conflicts', 'Replaces']:
-            line = next(l for l in engine.splitlines() if l.startswith(field + ':'))
-            self.assertIn('calamares,', line + ',')
-            self.assertIn('calamares-settings-debian', line)
-        self.assertIn('Provides: calamares', engine)
-        for distro in DISTROS:
-            self.assertIn(f'Package: corry-{distro}', control)
+        packages = {block.split('\n')[0]: block for block in control.split('\nPackage: ')[1:]}
+        # One complete installer package per distribution, nothing else.
+        self.assertEqual(sorted(packages), ['corry-debion', 'corry-edukasaun'])
+        for name, other in [('corry-edukasaun', 'corry-debion'), ('corry-debion', 'corry-edukasaun')]:
+            fields = {l.split(':', 1)[0]: l.split(':', 1)[1] for l in packages[name].splitlines() if ':' in l and l[0] != ' '}
+            self.assertEqual(fields['Architecture'].strip(), 'any')
+            for field in ['Conflicts', 'Replaces']:
+                for conflict in [other, 'corry (<< 0.2)', 'calamares', 'calamares-settings-debian']:
+                    self.assertIn(conflict, [c.strip() for c in fields[field].split(',')], (name, field))
+            self.assertIn('calamares', fields['Provides'])
+            install = (ROOT / f'debian/{name}.install').read_text()
+            for path in ['usr/bin/calamares', 'tools/remove-calamares', 'tools/corry-desktop-icon',
+                         'config/corry/apt/80corry-remove-calamares']:
+                self.assertIn(path, install)
+            postinst = (ROOT / f'debian/{name}.postinst').read_text()
+            self.assertIn('corry-desktop-icon --all-users', postinst)
+            self.assertIn('remove-calamares --leftovers', postinst)
+            self.assertIn('corry-desktop-icon --remove-all', (ROOT / f'debian/{name}.prerm').read_text())
+        self.assertIn('Debian stable', packages['corry-edukasaun'])
+        self.assertIn('Debian testing', packages['corry-debion'])
         self.assertEqual((ROOT / 'debian/changelog').read_text().split('(')[1].split(')')[0],
                          (ROOT / 'VERSION').read_text().strip())
-        install = (ROOT / 'debian/corry.install').read_text()
-        for path in ['tools/remove-calamares', 'config/corry/apt/80corry-remove-calamares', 'tools/corry-desktop-icon']:
-            self.assertIn(path, install)
         rules = (ROOT / 'debian/rules').read_text()
+        self.assertIn('--no-automatic-dbgsym', rules)
         build = (ROOT / 'tools/build-corry.sh').read_text()
         block = re.search(r'^KEEP := ((?:.*\\\n)*.*)$', rules, re.M).group(1)
         self.assertEqual(set(block.replace('\\', ' ').split()), set(build.split("keep='")[1].split("'")[0].split()))
+
+    def test_desktop_shortcut_for_every_user(self):
+        script = ROOT / 'tools/corry-desktop-icon'
+        with tempfile.TemporaryDirectory() as temp:
+            temp = Path(temp)
+            bin_dir, launcher = temp / 'bin', temp / 'corry-installer.desktop'
+            bin_dir.mkdir()
+            launcher.write_text('[Desktop Entry]\nName=Install Edukasaun OS\nExec=corry-installer\n')
+            homes = {'user': temp / 'home/user', 'hugo': temp / 'home/hugo'}
+            for home in homes.values():
+                home.mkdir(parents=True)
+            (homes['hugo'] / 'Desktop').mkdir()
+            (homes['hugo'] / 'Desktop/notes.desktop').write_text('Exec=other\n')
+            passwd = ''.join(f'{u}:x:{1000 + i}:{1000 + i}::{h}:/bin/bash\n' for i, (u, h) in enumerate(homes.items()))
+            passwd += f'nobody:x:65534:65534::{temp}:/usr/sbin/nologin\nroot:x:0:0::/root:/bin/bash\n'
+            stubs = {
+                'getent': f'cat <<"EOF"\n{passwd}EOF',
+                # runuser -u USER -- xdg-user-dir DESKTOP: answer per user ("Escritorio" for one).
+                'runuser': f'case "$2" in user) echo {homes["user"]}/Escritorio;; *) echo {homes["hugo"]}/Desktop;; esac',
+                'install': 'args=""; while [ $# -gt 0 ]; do case "$1" in -o|-g) shift 2;; *) args="$args $1"; shift;; esac; done; exec /usr/bin/install $args',
+                'id': 'echo users',
+            }
+            for name, body in stubs.items():
+                (bin_dir / name).write_text('#!/bin/sh\n' + body + '\n')
+                (bin_dir / name).chmod(0o755)
+            source = script.read_text().replace('/usr/share/applications/corry-installer.desktop', str(launcher))
+            env = {'PATH': f'{bin_dir}:/usr/bin:/bin'}
+            run = lambda mode: subprocess.run(['sh', '-c', source, 'corry-desktop-icon', mode], env=env, check=True)
+            run('--all-users')
+            shortcut_user = homes['user'] / 'Escritorio/corry-installer.desktop'
+            shortcut_hugo = homes['hugo'] / 'Desktop/corry-installer.desktop'
+            for shortcut in (shortcut_user, shortcut_hugo):
+                self.assertIn('Exec=corry-installer', shortcut.read_text())
+                self.assertTrue(os.access(shortcut, os.X_OK))
+            self.assertTrue((homes['hugo'] / '.config/corry/desktop-icon-done').exists())
+            run('--remove-all')
+            self.assertFalse(shortcut_user.exists() or shortcut_hugo.exists())
+            self.assertTrue((homes['hugo'] / 'Desktop/notes.desktop').exists())
 
     def test_remove_calamares_helper(self):
         script = ROOT / 'tools/remove-calamares'
@@ -386,6 +435,20 @@ class GrubTests(unittest.TestCase):
                 self.assertIsNone(grub.run())
             self.assertEqual(calls[-1][-1], 'grub-pc')
             self.assertTrue((target / 'etc/resolv.conf').is_symlink())
+            # UEFI: signed GRUB and shim for Secure Boot, best effort.
+            values['firmwareType'] = 'efi'
+            calls.clear()
+            with patch.object(grub.subprocess, 'run', return_value=arch), patch.object(grub, 'online', return_value=True), \
+                    patch.object(grub.shutil, 'copyfile', side_effect=lambda src, dst: Path(dst).write_text('x')):
+                self.assertIsNone(grub.run())
+            installed_packages = [c[-1] for c in calls if 'install' in c]
+            self.assertEqual(installed_packages, ['grub-efi-amd64', 'shim-signed', 'grub-efi-amd64-signed'])
+            # If they cannot be installed, the installation still continues.
+            fake.utils.target_env_call = lambda args: 1 if 'shim-signed' in args else 0
+            with patch.object(grub.subprocess, 'run', return_value=arch), patch.object(grub, 'online', return_value=True), \
+                    patch.object(grub.shutil, 'copyfile', side_effect=lambda src, dst: Path(dst).write_text('x')):
+                self.assertIsNone(grub.run())
+            self.assertIn('Secure Boot', fake.log.warnings[-1])
 
 
 class UpdateTests(unittest.TestCase):

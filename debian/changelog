@@ -1,3 +1,18 @@
+corry (0.2) unstable; urgency=medium
+
+  * One complete package per distribution: corry-edukasaun (built on Debian
+    stable) and corry-debion (built on Debian testing). They replace the 0.1
+    corry and profile packages, and Debian's calamares packages.
+  * An "Install <product>" shortcut appears on every user's desktop as soon
+    as the package is installed; it is removed with the package.
+  * Start on Debian live images that keep GRUB out of the squashfs; GRUB comes
+    from the ISO's package pool or the internet.
+  * Install shim-signed and grub-efi-amd64-signed on 64-bit UEFI systems so
+    the installed system starts with Secure Boot on (best effort).
+  * No -dbgsym packages; install-corry-debs.sh installs with apt.
+
+ -- Hugo Moniz do Rego <hugomonizdorego@angelinojoana.com>  Thu, 22 Oct 2026 20:00:00 +0900
+
 corry (0.1) unstable; urgency=medium
 
   * First Debian packages of Corry, the installer for Edukasaun OS and

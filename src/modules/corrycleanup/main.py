@@ -30,6 +30,8 @@ INSTALLER_PATHS = (
     "usr/local/share/applications/install-debian.desktop",
     "usr/local/bin/install-debian",
     "usr/bin/corry-installer",
+    "usr/share/icons/hicolor/scalable/apps/corry-installer.svg",
+    "usr/share/pixmaps/corry-installer.png",
     "usr/bin/calamares",
     "usr/share/polkit-1/actions/com.github.calamares.calamares.policy",
     "usr/share/metainfo/io.calamares.calamares.appdata.xml",

@@ -1,4 +1,9 @@
-# corry-installer comes from the corry package, which this package depends on.
-corry-debion: desktop-command-not-in-package corry-installer [usr/share/applications/corry-installer.desktop]
-# Compatibility link for Debian's install-debian command.
+# Calamares' libraries are private to the installer.
+corry-debion: package-name-doesnt-match-sonames *
+corry-debion: no-symbols-control-file *
+# Upstream Calamares test helper, not run on installed systems.
+corry-debion: script-not-executable [usr/lib/*/calamares/modules/unpackfs/runtests.sh]
+corry-debion: no-manual-page [usr/bin/corry-installer]
 corry-debion: no-manual-page [usr/bin/install-debian]
+# Calamares ships this translation; the code is valid for Qt.
+corry-debion: unknown-locale-code ja-Hira *

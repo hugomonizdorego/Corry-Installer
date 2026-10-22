@@ -1,18 +1,77 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Put the Corry launcher on the desktop of the live session's user.
-# Started by /etc/xdg/autostart/corry-desktop-icon.desktop; does nothing on an
-# installed system (and Corry is removed from installed systems anyway).
-grep -qw 'boot=live' /proc/cmdline 2>/dev/null || [ -d /run/live/medium ] || exit 0
+# Put the "Install <product>" shortcut on users' desktops.
+#
+#   corry-desktop-icon                 current user, once (XDG autostart at login)
+#   corry-desktop-icon --all-users     every user with a home, now (package postinst)
+#   corry-desktop-icon --remove-all    remove the shortcuts again (package postrm)
+#
+# The shortcut is made executable and trusted, so GNOME, Xfce and others start it
+# with a double click instead of asking first.
 launcher=/usr/share/applications/corry-installer.desktop
-[ -f "$launcher" ] || exit 0
-desktop=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
-[ -n "$desktop" ] && [ "$desktop" != "$HOME" ] || desktop=$HOME/Desktop
-mkdir -p "$desktop"
-cp "$launcher" "$desktop/corry-installer.desktop"
-chmod 755 "$desktop/corry-installer.desktop"
-# GNOME and others only start desktop files the user trusts.
-if command -v gio >/dev/null; then
- gio set "$desktop/corry-installer.desktop" metadata::trusted true 2>/dev/null || true
-fi
+name=corry-installer.desktop
+
+desktop_dir() { # user home
+ dir=$(runuser -u "$1" -- xdg-user-dir DESKTOP 2>/dev/null || true)
+ { [ -n "$dir" ] && [ "$dir" != "$2" ]; } || dir=$2/Desktop
+ echo "$dir"
+}
+
+trust() { # user uid file
+ bus=/run/user/$2/bus
+ if command -v gio >/dev/null && [ -S "$bus" ]; then
+  runuser -u "$1" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" \
+   gio set "$3" metadata::trusted true 2>/dev/null || true
+  # Xfce trusts a launcher whose checksum it has recorded.
+  sum=$(sha256sum "$3" | cut -d' ' -f1)
+  runuser -u "$1" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" \
+   gio set -t string "$3" metadata::xfce-exe-checksum "$sum" 2>/dev/null || true
+ fi
+}
+
+human_users() { # name uid home, for normal login accounts
+ getent passwd | while IFS=: read -r user _ uid _ _ home shell; do
+  [ "$uid" -ge 1000 ] 2>/dev/null && [ "$uid" -lt 60000 ] || continue
+  case "$shell" in */nologin|*/false) continue;; esac
+  [ -d "$home" ] && echo "$user $uid $home"
+ done
+}
+
+case "${1:-}" in
+ --all-users)
+  [ -f "$launcher" ] || exit 0
+  human_users | while read -r user uid home; do
+   dir=$(desktop_dir "$user" "$home")
+   group=$(id -gn "$user")
+   install -d -o "$user" -g "$group" "$dir"
+   install -m 755 -o "$user" -g "$group" "$launcher" "$dir/$name"
+   trust "$user" "$uid" "$dir/$name"
+   # Done for this user: the login helper will not add it back if removed.
+   install -d -o "$user" -g "$group" "$home/.config" "$home/.config/corry"
+   install -m 644 -o "$user" -g "$group" /dev/null "$home/.config/corry/desktop-icon-done"
+  done
+  ;;
+ --remove-all)
+  human_users | while read -r user uid home; do
+   file=$(desktop_dir "$user" "$home")/$name
+   # Only remove our own shortcut.
+   if [ -f "$file" ] && grep -q '^Exec=corry-installer' "$file"; then rm -f "$file"; fi
+  done
+  ;;
+ '')
+  [ -f "$launcher" ] || exit 0
+  marker=${XDG_CONFIG_HOME:-$HOME/.config}/corry/desktop-icon-done
+  [ -e "$marker" ] && exit 0  # The user may have removed it on purpose.
+  dir=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
+  { [ -n "$dir" ] && [ "$dir" != "$HOME" ]; } || dir=$HOME/Desktop
+  mkdir -p "$dir" "$(dirname "$marker")"
+  install -m 755 "$launcher" "$dir/$name"
+  if command -v gio >/dev/null; then
+   gio set "$dir/$name" metadata::trusted true 2>/dev/null || true
+   gio set -t string "$dir/$name" metadata::xfce-exe-checksum "$(sha256sum "$dir/$name" | cut -d' ' -f1)" 2>/dev/null || true
+  fi
+  : > "$marker"
+  ;;
+ *) echo "Usage: corry-desktop-icon [--all-users|--remove-all]" >&2; exit 2;;
+esac
 exit 0

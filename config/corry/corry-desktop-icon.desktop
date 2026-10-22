@@ -2,7 +2,7 @@
 [Desktop Entry]
 Type=Application
 Name=Corry desktop icon
-Comment=Puts the installer on the live session's desktop
 Exec=/usr/lib/corry/corry-desktop-icon
 NoDisplay=true
 X-GNOME-Autostart-Phase=Applications
+Comment=Puts the installer on the desktop once per user

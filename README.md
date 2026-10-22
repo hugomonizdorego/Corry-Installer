@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC0-1.0 -->
-# Corry Installer 0.1
+# Corry Installer 0.2
 
-> **Status: in development (0.1).** Corry has not yet been validated by full ISO
+> **Status: pre-release 0.2.** Corry has not yet been validated by full ISO
 > installations on real hardware. Do not use it on a computer with data you
 > cannot afford to lose.
 
@@ -13,7 +13,7 @@ Corry supports exactly those two bases.
 
 ## Screenshots, start to finish
 
-Captured from the **real Corry 0.1 build** running on a virtual display
+Captured from the **real Corry 0.2 build** running on a virtual display
 (`tools/screenshots/capture.sh`), except the two partition pages marked
 *preview*: a container has no disks to list, so those come from the design
 preview (`tools/preview.py`). The real capture run skips the partition step, so
@@ -62,28 +62,29 @@ All DebION GNU/Linux screenshots are in [`docs/screenshots`](docs/screenshots).
 
 ## Install the Debian packages
 
-Corry is packaged as three `.deb` files (built by CI for Debian stable and
-testing, see *Actions → Artifacts*, or locally with `dpkg-buildpackage -us -uc -b`):
+There is one complete package per distribution:
 
-| Package | Contents |
-| --- | --- |
-| `corry_0.1_<arch>.deb` | The installer engine, launcher, preflight check and Calamares clean-up |
-| `corry-edukasaun_0.1_all.deb` | Edukasaun OS profile: branding, settings, menu entry |
-| `corry-debion_0.1_all.deb` | DebION GNU/Linux profile (installing one profile removes the other) |
+| Package | For | Built on |
+| --- | --- | --- |
+| `corry-edukasaun_0.2_amd64.deb` | Edukasaun OS | Debian stable |
+| `corry-debion_0.2_amd64.deb` | DebION GNU/Linux | Debian testing |
 
-In the live system or the ISO build chroot, with internet (for the dependencies),
-from the folder with the downloaded files:
+Download it from the GitHub release (or a CI run's *Artifacts*), then, in the live
+system or the ISO build chroot, with internet for the dependencies:
 
 ```bash
-sudo sh install-corry-debs.sh edukasaun      # or: debion
+sudo sh install-corry-debs.sh                    # installs the corry-*.deb next to it
 # the same by hand:
-sudo apt install ./corry_0.1_amd64.deb ./corry-edukasaun_0.1_all.deb
+sudo apt install ./corry-edukasaun_0.2_amd64.deb
 ```
 
-**Do not use `dpkg -i`**: it does not download the dependencies (for example
-`qml6-module-qtqml-workerscript`) and leaves the packages unconfigured. If that
-already happened, `install-corry-debs.sh` (or `sudo apt --fix-broken install`)
-repairs it. `corry-dbgsym` holds debug symbols only and is not needed.
+**Do not use `dpkg -i`**: it does not download the dependencies and leaves the
+package unconfigured. If that already happened, `install-corry-debs.sh` (or
+`sudo apt --fix-broken install`) repairs it. Install the package that matches the
+base: the testing build needs Debian testing's libraries.
+
+After installation every user has an **"Install Edukasaun OS"** (or "Install DebION
+GNU/Linux") shortcut on the desktop; double-click it to start Corry.
 
 apt resolves the dependencies and **removes Debian's
 `calamares` and `calamares-settings-debian`** (Corry conflicts with and replaces
@@ -93,7 +94,7 @@ next dpkg run, so nothing of Calamares remains to conflict. Corry then is the
 default installer: the "Install Edukasaun OS" menu entry, a desktop icon in the live
 session, and Debian's `install-debian` command all open Corry.
 
-`sudo apt purge corry corry-edukasaun` removes Corry completely. On the installed
+`sudo apt purge corry-edukasaun` removes Corry completely, desktop shortcuts included. On the installed
 system, Corry's `corrycleanup` job purges these packages automatically.
 
 ## Build from source
@@ -119,6 +120,7 @@ firmware, desktop, login manager, initramfs-tools, `grub2-common`, `grub-pc-bin`
 - [Integration and testing guide](docs/CORRY-DEVELOPMENT.md)
 - [Branding guide: edit or add a distribution, media sizes](docs/BRANDING.md)
 - [Calamares review and recommendations](docs/RECOMMENDATIONS.md)
+- [Roadmap to 1.0](docs/ROADMAP.md)
 - [Changelog](CHANGELOG-CORRY.md)
 
 CI builds the packages on `debian:stable` and `debian:testing`, installs Debian's

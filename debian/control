@@ -42,11 +42,10 @@ Homepage: https://github.com/hugomonizdorego/Corry-Installer
 Vcs-Git: https://github.com/hugomonizdorego/Corry-Installer.git
 Rules-Requires-Root: no
 
-Package: corry
+Package: corry-edukasaun
 Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
-         corry-edukasaun (= ${source:Version}) | corry-debion (= ${source:Version}) | corry-profile,
          python3,
          python3-yaml,
          polkitd,
@@ -85,38 +84,72 @@ Recommends: gparted,
             grub-efi-amd64-bin [amd64],
             grub-efi-arm64-bin [arm64],
             grub-efi-ia32-bin [i386]
-Conflicts: calamares, calamares-settings-debian
-Replaces: calamares, calamares-settings-debian
-Provides: calamares
-Description: guided system installer for Edukasaun OS and DebION GNU/Linux
- Corry installs Edukasaun OS or DebION GNU/Linux from a live session, step by
- step: welcome, system check, location, keyboard, partitions (including
- GParted), users, installation with a slideshow and music, and finish. It
- works with and without internet and removes itself from the installed
- system.
+Conflicts: corry-debion, corry (<< 0.2), corry-profile, calamares, calamares-settings-debian
+Replaces: corry-debion, corry (<< 0.2), corry-profile, calamares, calamares-settings-debian
+Provides: corry, calamares
+Description: Corry installer for Edukasaun OS
+ Corry installs Edukasaun OS from a live session, step by step: welcome,
+ system check, location, keyboard, partitions (including GParted), users,
+ installation with a slideshow and music, and finish. It works with and
+ without internet and removes itself from the installed system.
  .
- Corry is based on Calamares 3.3.15 and replaces Debian's calamares and
- calamares-settings-debian packages; what is left of them is purged
- automatically.
-
-Package: corry-edukasaun
-Architecture: all
-Depends: ${misc:Depends}, corry (>= ${source:Version})
-Conflicts: corry-profile, calamares-settings-debian
-Replaces: corry-profile, calamares-settings-debian
-Provides: corry-profile
-Description: Corry installer profile for Edukasaun OS
- Branding (names, colors, slides, video and music) and installer settings for
- Edukasaun OS. Makes Corry the default installer of the live session: menu
- entry, desktop icon for the live user and the install-debian command.
+ This package is built for Debian stable and contains the complete installer
+ with the Edukasaun OS branding. It replaces Debian's calamares and
+ calamares-settings-debian, makes Corry the default installer and puts an
+ "Install Edukasaun OS" shortcut on the users' desktops.
 
 Package: corry-debion
-Architecture: all
-Depends: ${misc:Depends}, corry (>= ${source:Version})
-Conflicts: corry-profile, calamares-settings-debian
-Replaces: corry-profile, calamares-settings-debian
-Provides: corry-profile
-Description: Corry installer profile for DebION GNU/Linux
- Branding (names, colors, slides, video and music) and installer settings for
- DebION GNU/Linux. Makes Corry the default installer of the live session:
- menu entry, desktop icon for the live user and the install-debian command.
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         python3,
+         python3-yaml,
+         polkitd,
+         pkexec,
+         sudo,
+         zenity,
+         xdg-user-dirs,
+         kmod,
+         parted,
+         rsync,
+         squashfs-tools,
+         btrfs-progs,
+         e2fsprogs,
+         xfsprogs,
+         dosfstools,
+         cryptsetup,
+         lvm2,
+         os-prober,
+         efibootmgr,
+         grub2-common,
+         initramfs-tools,
+         locales,
+         tzdata,
+         keyboard-configuration,
+         qml6-module-qtquick,
+         qml6-module-qtquick-layouts,
+         qml6-module-qtquick-controls,
+         qml6-module-qtquick-templates,
+         qml6-module-qtquick-window,
+         qml6-module-qtqml-workerscript
+Recommends: gparted,
+            qml6-module-qtmultimedia,
+            libqt6multimedia6,
+            fonts-noto-core,
+            grub-pc-bin [amd64 i386],
+            grub-efi-amd64-bin [amd64],
+            grub-efi-arm64-bin [arm64],
+            grub-efi-ia32-bin [i386]
+Conflicts: corry-edukasaun, corry (<< 0.2), corry-profile, calamares, calamares-settings-debian
+Replaces: corry-edukasaun, corry (<< 0.2), corry-profile, calamares, calamares-settings-debian
+Provides: corry, calamares
+Description: Corry installer for DebION GNU/Linux
+ Corry installs DebION GNU/Linux from a live session, step by step: welcome,
+ system check, location, keyboard, partitions (including GParted), users,
+ installation with a slideshow and music, and finish. It works with and
+ without internet and removes itself from the installed system.
+ .
+ This package is built for Debian testing and contains the complete installer
+ with the DebION GNU/Linux branding. It replaces Debian's calamares and
+ calamares-settings-debian, makes Corry the default installer and puts an
+ "Install DebION GNU/Linux" shortcut on the users' desktops.

@@ -1,7 +1,24 @@
 <!-- SPDX-License-Identifier: CC0-1.0 -->
 # Corry changelog
 
-## 0.1 — in development
+## 0.2 — pre-release
+
+- **One package per distribution.** `corry-edukasaun` is built on Debian stable
+  (Edukasaun OS) and `corry-debion` on Debian testing (DebION GNU/Linux). Each
+  contains the whole installer and replaces the 0.1 `corry` and profile packages
+  as well as Debian's `calamares` and `calamares-settings-debian`.
+- **Desktop shortcut.** Installing the package puts an "Install Edukasaun OS" /
+  "Install DebION GNU/Linux" shortcut, executable and trusted, on every user's
+  desktop right away (and once for users who log in later). Removing the package
+  removes the shortcuts. The shortcut uses the product logo as its icon.
+- **Secure Boot.** On 64-bit UEFI, `shim-signed` and `grub-efi-amd64-signed` are
+  installed from the media pool or online (best effort; a warning if not possible).
+- No `-dbgsym` or `dwz` debug files; `install-corry-debs.sh` finds the package next
+  to it and installs it with apt.
+- Release workflow: pushing a `v*` tag publishes both packages as a GitHub release.
+- Roadmap to 1.0 in `docs/ROADMAP.md`.
+
+## 0.1
 
 ### Fixes from the first test on Debian testing
 

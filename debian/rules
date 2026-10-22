@@ -36,5 +36,12 @@ override_dh_auto_install:
 	DESTDIR=$(CURDIR)/debian/corry-debion bash tools/install-profile.sh --distro debion --package
 
 override_dh_shlibdeps:
-	dh_shlibdeps -l$(CURDIR)/debian/corry/usr/lib/$(DEB_HOST_MULTIARCH) \
+	dh_shlibdeps -l$(CURDIR)/debian/corry-edukasaun/usr/lib/$(DEB_HOST_MULTIARCH):$(CURDIR)/debian/corry-debion/usr/lib/$(DEB_HOST_MULTIARCH) \
 		$(if $(filter 5,$(CORRY_QT)),-- --ignore-missing-info)
+
+# Only the two installer packages are released; no -dbgsym packages.
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym
+
+# dwz's shared debug file would otherwise land in the packages themselves.
+override_dh_dwz:
