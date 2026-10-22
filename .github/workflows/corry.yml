@@ -73,11 +73,24 @@ jobs:
           grep -q 'DebION' /etc/calamares/branding/corry/branding.desc
           apt-get purge -y corry corry-debion
           ! ls -d /etc/calamares /usr/lib/corry /usr/share/calamares /etc/apt/apt.conf.d/80corry-remove-calamares 2>/dev/null
-      - name: Collect packages
+      - name: Collect packages (no debug symbols) with the install script
         run: |
           mkdir -p dist
-          cp ../*.deb dist/
+          cp ../corry_*.deb ../corry-edukasaun_*.deb ../corry-debion_*.deb dist/
+          cp tools/install-corry-debs.sh dist/
+          printf '%s\n' 'Install Corry (needs internet for the dependencies):' \
+            '  sudo sh install-corry-debs.sh edukasaun    (or: debion)' \
+            'Do not use "dpkg -i": it does not install the dependencies.' > dist/INSTALL.txt
           cd dist && sha256sum *.deb > SHA256SUMS
+      - name: Repair a failed "dpkg -i" with the install script
+        run: |
+          apt-get autoremove -y
+          # As users did: dpkg -i without the dependencies fails half-way.
+          dpkg -i dist/corry_*.deb dist/corry-edukasaun_*.deb || true
+          sh dist/install-corry-debs.sh edukasaun
+          dpkg-query -W -f='${db:Status-Abbrev}' corry corry-edukasaun | grep -qx 'ii ii '
+          /usr/lib/corry/preflight.py --config /etc/calamares 2>&1 | grep -q 'Live system image not found'
+          apt-get purge -y corry corry-edukasaun
       - uses: actions/upload-artifact@v4
         with:
           name: corry-0.1-debian-${{ matrix.debian }}-amd64-debs

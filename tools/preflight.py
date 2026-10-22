@@ -7,6 +7,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import urllib.request
 import yaml
 
 REQUIRED = ("mkfs.btrfs", "mkfs.ext4", "mkfs.xfs", "mkfs.fat", "mkswap",
@@ -15,6 +16,11 @@ REQUIRED = ("mkfs.btrfs", "mkfs.ext4", "mkfs.xfs", "mkfs.fat", "mkswap",
 # GRUB platform files per Debian architecture: (UEFI, BIOS).
 GRUB_PLATFORMS = {"amd64": ("x86_64-efi", "i386-pc"), "arm64": ("arm64-efi", None),
                   "i386": ("i386-efi", "i386-pc")}
+
+
+# The Debian package that provides GRUB for each (firmware, architecture).
+GRUB_PACKAGES = {("efi", "amd64"): "grub-efi-amd64", ("efi", "arm64"): "grub-efi-arm64",
+                 ("efi", "i386"): "grub-efi-ia32", ("bios", "amd64"): "grub-pc", ("bios", "i386"): "grub-pc"}
 
 
 def image_requirements(efi, arch):
@@ -46,6 +52,51 @@ def missing_from_image(image, efi, arch):
     return errors
 
 
+def grub_in_pool(medium, package):
+    """True when the boot medium carries a Debian package pool with the GRUB package."""
+    medium = pathlib.Path(medium)
+    return (any((medium / "dists").glob("*/Release"))
+            and any((medium / "pool").glob("**/" + package + "_*.deb")))
+
+
+def online(url, timeout=8):
+    try:
+        with urllib.request.urlopen(url, timeout=timeout):
+            return True
+    except (OSError, ValueError):
+        return False
+
+
+def boot_problems(image, config, efi, arch, has_internet=None):
+    """Errors that would stop the installed system from booting.
+
+    Debian live images usually leave GRUB out of the image and carry it in the
+    ISO's package pool; the corrygrub job installs it from there, or from the
+    internet. Only when none of the three can provide GRUB is it an error.
+    """
+    missing = missing_from_image(image, efi, arch)
+    grub = [m for m in missing if "grub" in m.lower()]
+    errors = [m for m in missing if m not in grub]
+    if not grub:
+        return errors
+    package = GRUB_PACKAGES.get(("efi" if efi else "bios", arch))
+    try:
+        grub_conf = yaml.safe_load((config / "modules/corrygrub.conf").read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        grub_conf = {}
+    medium = grub_conf.get("medium", str(pathlib.PurePosixPath(image).parent.parent))
+    if package and grub_in_pool(medium, package):
+        return errors
+    if has_internet is None:
+        has_internet = online(grub_conf.get("checkUrl", "http://deb.debian.org/debian/"))
+    if package and has_internet:
+        return errors
+    errors.append("GRUB ({}) is not in the live image or on the installation media, and this computer "
+                  "is not connected to the internet. Connect to the internet, then start the installer "
+                  "again.".format(package or "for this computer"))
+    return errors
+
+
 def check(config, efi=None, arch=None):
     # Desktop sessions may omit sbin from the unprivileged user's PATH.
     search_path = os.environ.get("PATH", os.defpath) + os.pathsep + "/usr/sbin:/sbin"
@@ -64,7 +115,7 @@ def check(config, efi=None, arch=None):
                 if arch is None:
                     arch = subprocess.run(["dpkg", "--print-architecture"], stdout=subprocess.PIPE,
                                           text=True).stdout.strip()
-                errors.extend(missing_from_image(image["source"], efi, arch))
+                errors.extend(boot_problems(image["source"], config, efi, arch))
     except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as exc:
         errors.append("Invalid Corry profile: " + str(exc))
     return errors

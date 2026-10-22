@@ -3,7 +3,15 @@
 
 ## 0.1 — in development
 
-### Packages and design (latest)
+### Fixes from the first test on Debian testing
+
+- Corry refused to start on Debian live images because GRUB is not inside their
+  `filesystem.squashfs`. GRUB may now come from the image, the ISO's package pool
+  or the internet; Corry installs it during installation (`corrygrub`).
+- `install-corry-debs.sh` installs the packages with apt and repairs a failed
+  `dpkg -i`; CI artifacts no longer include the `corry-dbgsym` debug package.
+
+### Packages and design
 
 - Debian packages: `corry`, `corry-edukasaun`, `corry-debion`. Installing them with
   apt removes Debian's `calamares` and `calamares-settings-debian`; leftovers are

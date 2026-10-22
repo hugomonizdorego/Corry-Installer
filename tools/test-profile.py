@@ -463,6 +463,37 @@ class PreflightTests(unittest.TestCase):
             missing = preflight.missing_from_image(image, False, 'amd64')
             self.assertEqual(len(missing), 1)
             self.assertIn('i386-pc', missing[0])
+            # A Debian live image without GRUB (as Debian ships them): fine when the
+            # ISO's package pool or the internet can provide it, an error otherwise.
+            bare = Path(temp) / 'bare'
+            for relative in ['boot/vmlinuz-6.12.0-1-amd64', 'usr/sbin/update-initramfs']:
+                (bare / relative).parent.mkdir(parents=True, exist_ok=True)
+                (bare / relative).write_text('x')
+            medium = Path(temp) / 'medium'
+            bare_image = str(medium / 'live/filesystem.squashfs')
+            (medium / 'live').mkdir(parents=True)
+            subprocess.run(['mksquashfs', str(bare), bare_image, '-quiet', '-noappend'], check=True,
+                           stdout=subprocess.DEVNULL)
+            config = Path(temp) / 'config'
+            (config / 'modules').mkdir(parents=True)
+            (config / 'modules/corrygrub.conf').write_text(f'medium: {medium}\n')
+            errors = preflight.boot_problems(bare_image, config, True, 'amd64', has_internet=False)
+            self.assertEqual(len(errors), 1)
+            self.assertIn('grub-efi-amd64', errors[0])
+            self.assertIn('Connect to the internet', errors[0])
+            self.assertEqual(preflight.boot_problems(bare_image, config, True, 'amd64', has_internet=True), [])
+            (medium / 'dists/forky').mkdir(parents=True)
+            (medium / 'dists/forky/Release').write_text('Suite: testing\n')
+            (medium / 'pool/main/g/grub2').mkdir(parents=True)
+            (medium / 'pool/main/g/grub2/grub-efi-amd64_2.12-9_amd64.deb').write_text('')
+            self.assertEqual(preflight.boot_problems(bare_image, config, True, 'amd64', has_internet=False), [])
+            # Still required in the image: a kernel and initramfs-tools.
+            (bare / 'boot/vmlinuz-6.12.0-1-amd64').unlink()
+            subprocess.run(['mksquashfs', str(bare), bare_image, '-quiet', '-noappend'], check=True,
+                           stdout=subprocess.DEVNULL)
+            errors = preflight.boot_problems(bare_image, config, True, 'amd64', has_internet=True)
+            self.assertEqual(len(errors), 1)
+            self.assertIn('Linux kernel', errors[0])
 
 
 if __name__ == '__main__':

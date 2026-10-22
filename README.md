@@ -71,13 +71,21 @@ testing, see *Actions → Artifacts*, or locally with `dpkg-buildpackage -us -uc
 | `corry-edukasaun_0.1_all.deb` | Edukasaun OS profile: branding, settings, menu entry |
 | `corry-debion_0.1_all.deb` | DebION GNU/Linux profile (installing one profile removes the other) |
 
-In the live system or the ISO build chroot:
+In the live system or the ISO build chroot, with internet (for the dependencies),
+from the folder with the downloaded files:
 
 ```bash
+sudo sh install-corry-debs.sh edukasaun      # or: debion
+# the same by hand:
 sudo apt install ./corry_0.1_amd64.deb ./corry-edukasaun_0.1_all.deb
 ```
 
-Use `apt`, not `dpkg -i`: apt resolves the dependencies and **removes Debian's
+**Do not use `dpkg -i`**: it does not download the dependencies (for example
+`qml6-module-qtqml-workerscript`) and leaves the packages unconfigured. If that
+already happened, `install-corry-debs.sh` (or `sudo apt --fix-broken install`)
+repairs it. `corry-dbgsym` holds debug symbols only and is not needed.
+
+apt resolves the dependencies and **removes Debian's
 `calamares` and `calamares-settings-debian`** (Corry conflicts with and replaces
 them). Corry's `postinst` then deletes every file they left behind (such as their
 desktop autostart entry), and an APT hook purges their package records after the
