@@ -84,8 +84,10 @@ jobs:
           cd dist && sha256sum *.deb > SHA256SUMS
       - name: Repair a failed "dpkg -i" with the install script
         run: |
-          apt-get autoremove -y
-          # As users did: dpkg -i without the dependencies fails half-way.
+          # Remove one of Corry's dependencies (autoremove would try to remove
+          # sudo, which refuses in a container), then do what users did:
+          # dpkg -i without the dependencies fails half-way.
+          apt-get remove -y zenity
           dpkg -i dist/corry_*.deb dist/corry-edukasaun_*.deb || true
           sh dist/install-corry-debs.sh edukasaun
           dpkg-query -W -f='${db:Status-Abbrev}' corry corry-edukasaun | grep -qx 'ii ii '
