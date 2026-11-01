@@ -68,6 +68,20 @@ jobs:
           echo "=== then runit-init instead"; apt-get -s install -y runit-init 2>&1 | grep -E '^(Remv|Inst|E:|   )' | head -20
           echo "=== openrc files"; apt-get download openrc >/dev/null 2>&1 && dpkg -c openrc_*.deb | grep -E 'README|inittab|postinst|/sbin/|rc-update' | head -20
           echo "=== openrc README.Debian"; apt-get install -y --no-install-recommends openrc sysv-rc- >/dev/null 2>&1; sed -n 1,80p /usr/share/doc/openrc/README.Debian 2>/dev/null || echo missing
+      - name: Why the switch removes desktop packages (full simulation, no GNOME leftovers)
+        shell: bash {0}
+        run: |
+          apt-get autoremove --purge -y >/dev/null 2>&1
+          apt-get install -y --no-install-recommends lightdm-gtk-greeter xfce4-panel xfdesktop4 thunar pipewire-pulse wireplumber >/dev/null 2>&1
+          M="systemd-sysv- libpam-systemd- systemd- libnss-systemd-"
+          echo "=== full simulation"; apt-get -s install -y --allow-remove-essential --no-install-recommends sysvinit-core elogind libpam-elogind orphan-sysvinit-scripts $M 2>&1 | grep -vE '^(Inst|Conf) ' | head -80
+          echo "=== hard dependencies of the desktop pieces"
+          for p in dbus-user-session xfce4-session xfconf xfce4-settings lightdm-gtk-greeter wireplumber pipewire-pulse pipewire-bin network-manager polkitd udev; do
+            echo "--- $p"; apt-cache show $p 2>/dev/null | grep -E '^(Depends|Pre-Depends):' | head -2 | grep -oE '(systemd[a-z0-9-]*|libpam-systemd|dbus-user-session|default-logind|logind)[^,]*' | sort -u | tr '\n' ' '; echo
+          done
+          echo "=== installed packages depending on systemd itself"; apt-cache rdepends --installed --important systemd 2>/dev/null | head -40
+          echo "=== installed packages depending on libpam-systemd"; apt-cache rdepends --installed --important libpam-systemd 2>/dev/null | head -20
+          echo "=== installed packages depending on dbus-user-session"; apt-cache rdepends --installed --important dbus-user-session 2>/dev/null | head -20
       - name: Boot loader packages and their hooks
         shell: bash {0}
         run: |

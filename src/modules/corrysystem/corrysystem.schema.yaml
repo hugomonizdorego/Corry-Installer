@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+$schema: https://json-schema.org/schema#
+$id: https://calamares.io/schemas/corrysystem
+definitions:
+  option:
+    type: object
+    additionalProperties: false
+    properties:
+      id: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
+      name: { type: string }
+      description: { type: string }
+      packages: { type: array, items: { type: string, pattern: "^[a-z0-9][a-z0-9+.-]+$" } }
+      default: { type: boolean }
+      firmware: { type: array, items: { type: string, enum: [ bios, efi ] } }
+      architectures: { type: array, items: { type: string } }
+      filesystems: { type: array, items: { type: string } }
+      secureBoot: { type: boolean }
+      needsSystemd: { type: boolean }
+    required: [ id, name, description ]
+additionalProperties: false
+type: object
+properties:
+  init: { type: array, items: { $ref: "#/definitions/option" }, minItems: 1 }
+  bootloader: { type: array, items: { $ref: "#/definitions/option" }, minItems: 1 }
+required: [ init, bootloader ]

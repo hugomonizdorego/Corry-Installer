@@ -102,7 +102,7 @@ ExecutionViewStep::ExecutionViewStep( QObject* parent )
         // Corry: borderless slideshow, a text button for the details, and the
         // current step above a slim progress bar.
         m_tab_widget->setDocumentMode( true );
-        layout->setContentsMargins( 24, 16, 24, 12 );
+        layout->setContentsMargins( 2, 2, 2, 2 );
         bottomLayout->removeWidget( m_label );
         bottomLayout->insertWidget( 1, m_label );
         auto* details = new QPushButton( m_widget );

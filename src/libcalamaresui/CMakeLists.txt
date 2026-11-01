@@ -24,6 +24,7 @@ set(calamaresui_SOURCES
     viewpages/Slideshow.cpp
     viewpages/ViewStep.cpp
     widgets/ClickableLabel.cpp
+    widgets/CorryCard.cpp
     widgets/ErrorDialog.cpp
     widgets/FixedAspectRatioLabel.cpp
     widgets/PrettyRadioButton.cpp

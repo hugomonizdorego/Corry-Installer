@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+$schema: https://json-schema.org/schema#
+$id: https://calamares.io/schemas/corryinit
+additionalProperties: false
+type: object
+properties:
+  checkUrl: { type: string, pattern: "^https?://" }
+  allowedRemovals: { type: array, items: { type: string } }
+  remove: { type: array, items: { type: string } }
+  needsSystemd: { type: array, items: { type: string } }
+  purge: { type: array, items: { type: string } }

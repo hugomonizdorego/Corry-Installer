@@ -4,9 +4,9 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export QT_QPA_PLATFORM = offscreen
 
 # Only the modules Corry uses are built (same list as tools/build-corry.sh).
-KEEP := welcome locale keyboard partition users summary finished mount unpackfs \
+KEEP := welcome locale keyboard partition users corrysystem summary finished mount unpackfs \
         machineid fstab localecfg displaymanager networkcfg hwclock corrycleanup \
-        corryupdate corrygrub initramfs grubcfg bootloader umount
+        corryupdate corryinit corrygrub initramfs corrybootloader grubcfg bootloader umount
 SKIP := $(filter-out $(KEEP),$(notdir $(patsubst %/,%,$(dir $(wildcard src/modules/*/CMakeLists.txt src/modules/*/module.desc)))))
 # Debian builds use Qt 6. CORRY_QT=5 exists only for local packaging tests.
 CORRY_QT ?= 6
@@ -25,7 +25,7 @@ override_dh_auto_configure:
 override_dh_auto_test:
 ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 	cd $(BUILDDIR) && ctest --output-on-failure \
-		-R '^(userstest|partitionconfigtest|corrypartitiontest|welcometest)$$'
+		-R '^(userstest|partitionconfigtest|corrypartitiontest|welcometest|corrysystemtest)$$'
 	python3 tools/test-profile.py
 endif
 

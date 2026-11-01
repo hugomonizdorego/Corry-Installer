@@ -4,51 +4,65 @@ import io.calamares.core 1.0
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-// Corry header: product title and a horizontal stepper. Calamares allows at
-// most 128 px for the Corry header (see CalamaresWindow.cpp).
+// Corry header: product line and a timeline of the steps, on the light page
+// background. Calamares allows at most 128 px for the Corry header (see
+// CalamaresWindow.cpp). Colors are replaced per distribution by
+// tools/install-profile.sh.
 Rectangle {
     id: header
-    height: 116
-    color: "#ffffff"
+    height: 118
+    color: "#edf3fb"
     property color accent: "#6445a4"
+    property color accentLight: "#8a6fd0"
     property color tint: "#f0ecf8"
     property string product: ""
     property string logo: ""
     property string stepName: ""
     Component.onCompleted: {
-        accent = Branding.styleString(Branding.SidebarTextCurrent)
-        tint = Branding.styleString(Branding.SidebarBackgroundCurrent)
         product = Branding.shortProductName()
         logo = "file:" + Branding.imagePath(Branding.ProductLogo)
     }
     ColumnLayout {
         anchors.fill: parent
-        anchors.leftMargin: 32; anchors.rightMargin: 32; anchors.topMargin: 14; anchors.bottomMargin: 10
-        spacing: 12
+        anchors.leftMargin: 38; anchors.rightMargin: 38; anchors.topMargin: 12; anchors.bottomMargin: 2
+        spacing: 6
         RowLayout {
             Layout.fillWidth: true
-            spacing: 12
-            Image { source: header.logo; sourceSize.width: 34; sourceSize.height: 34; Layout.preferredWidth: 34; Layout.preferredHeight: 34 }
+            spacing: 14
+            // Logo in a soft white tile.
+            Item {
+                Layout.preferredWidth: 46; Layout.preferredHeight: 46
+                Rectangle { anchors.fill: parent; anchors.topMargin: 3; radius: 15; color: "#cfdbeb"; opacity: 0.55 }
+                Rectangle {
+                    anchors.fill: parent; radius: 14; color: "#ffffff"
+                    Image { anchors.centerIn: parent; source: header.logo; sourceSize.width: 30; sourceSize.height: 30; width: 30; height: 30 }
+                }
+            }
             ColumnLayout {
                 spacing: 1
                 Layout.fillWidth: true
-                Text { text: qsTr("Install %1").arg(header.product); color: "#1d2129"; font.pixelSize: 17; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { text: qsTr("Install %1").arg(header.product); color: "#1f2a44"; font.pixelSize: 18; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
                 Text {
                     text: qsTr("Step %1 of %2").arg(ViewManager.currentStepIndex + 1).arg(steps.count) + (header.stepName ? "  ·  " + header.stepName : "")
-                    color: "#6b7280"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true
+                    color: "#64748b"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true
                 }
             }
-            Text { text: "Corry @CORRY_VERSION@"; color: "#9ca3af"; font.pixelSize: 11 }
+            Text { text: "Corry @CORRY_VERSION@"; color: "#94a3b8"; font.pixelSize: 11 }
             Button {
                 id: about
                 text: qsTr("About")
                 flat: true
                 onClicked: debug.about()
                 Accessible.name: text
-                contentItem: Text { text: about.text; color: about.hovered ? header.accent : "#6b7280"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { radius: 14; color: about.hovered ? header.tint : "transparent"; border.color: "#e5e7eb" }
+                implicitHeight: 30; implicitWidth: 74
+                contentItem: Text { text: about.text; color: about.hovered ? header.accent : "#64748b"; font.pixelSize: 12; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                background: Item {
+                    Rectangle { anchors.fill: parent; anchors.topMargin: 2; radius: 15; color: "#cfdbeb"; opacity: 0.5 }
+                    Rectangle { anchors.fill: parent; radius: 15; color: about.hovered ? header.tint : "#ffffff" }
+                }
             }
         }
+        // Timeline: white nodes on a line; the current step has a pill label.
         RowLayout {
             Layout.fillWidth: true
             spacing: 0
@@ -62,36 +76,53 @@ Rectangle {
                     onCurrentChanged: if (current) header.stepName = display
                     Component.onCompleted: if (current) header.stepName = display
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 44
+                    Layout.preferredHeight: 50
                     Rectangle {
                         visible: index > 0
-                        x: 0; width: parent.width / 2; y: 10; height: 2
-                        color: step.done || step.current ? header.accent : "#e5e7eb"
+                        x: 0; width: parent.width / 2; y: 11; height: 3; radius: 1.5
+                        color: step.done || step.current ? header.accent : "#d9e2ee"
                     }
                     Rectangle {
                         visible: index < steps.count - 1
-                        x: parent.width / 2; width: parent.width / 2; y: 10; height: 2
-                        color: step.done ? header.accent : "#e5e7eb"
+                        x: parent.width / 2; width: parent.width / 2; y: 11; height: 3; radius: 1.5
+                        color: step.done ? header.accent : "#d9e2ee"
                     }
+                    // Node shadow, node, dot.
+                    Rectangle { width: 26; height: 26; radius: 13; y: 2; anchors.horizontalCenter: parent.horizontalCenter; color: "#c5d2e4"; opacity: 0.6 }
                     Rectangle {
-                        width: 22; height: 22; radius: 11
+                        id: node
+                        width: 26; height: 26; radius: 13
                         anchors.horizontalCenter: parent.horizontalCenter
-                        color: step.done ? header.accent : step.current ? header.tint : "#f3f4f6"
+                        color: step.done ? header.accent : "#ffffff"
                         border.width: step.current ? 2 : 0
                         border.color: header.accent
-                        Text {
-                            anchors.centerIn: parent
-                            text: step.done ? "✓" : (index + 1).toString()
-                            color: step.done ? "#ffffff" : step.current ? header.accent : "#9ca3af"
-                            font.pixelSize: 11; font.bold: true
+                        Rectangle {
+                            anchors.centerIn: parent; width: 10; height: 10; radius: 5
+                            visible: !step.done
+                            color: step.current ? header.accent : "#d9e2ee"
+                        }
+                        Text { anchors.centerIn: parent; visible: step.done; text: "✓"; color: "#ffffff"; font.pixelSize: 13; font.bold: true }
+                    }
+                    Rectangle {
+                        id: pill
+                        y: 30
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.min(parent.width - 4, label.implicitWidth + 16); height: 20; radius: 10
+                        visible: step.current
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0; color: header.accent }
+                            GradientStop { position: 1; color: header.accentLight }
                         }
                     }
                     Text {
-                        y: 27
-                        width: parent.width
+                        id: label
+                        y: 31
+                        width: parent.width - 8
+                        anchors.horizontalCenter: parent.horizontalCenter
                         horizontalAlignment: Text.AlignHCenter
                         text: display
-                        color: step.current ? header.accent : step.done ? "#374151" : "#9ca3af"
+                        color: step.current ? "#ffffff" : step.done ? "#475569" : "#94a3b8"
                         font.pixelSize: 11; font.bold: step.current
                         elide: Text.ElideRight
                     }
@@ -99,5 +130,4 @@ Rectangle {
             }
         }
     }
-    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#e5e7eb" }
 }

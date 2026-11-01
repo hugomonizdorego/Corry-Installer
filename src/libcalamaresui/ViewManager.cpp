@@ -24,6 +24,7 @@
 #include "viewpages/BlankViewStep.h"
 #include "viewpages/ExecutionViewStep.h"
 #include "viewpages/ViewStep.h"
+#include "widgets/CorryCard.h"
 #include "widgets/ErrorDialog.h"
 #include "widgets/TranslationFix.h"
 
@@ -155,6 +156,13 @@ corryHeading( const QString& module )
                  QCoreApplication::translate( "Corry", "Your name, how you sign in, and the passwords for you and the "
                                                        "administrator." ) };
     }
+    if ( module == QStringLiteral( "corrysystem" ) )
+    {
+        return { QCoreApplication::translate( "Corry", "System components" ),
+                 QCoreApplication::translate( "Corry", "Choose the init system and the boot loader of the new system. "
+                                                       "The defaults are tested and work offline; the alternatives "
+                                                       "need an internet connection." ) };
+    }
     if ( module == QStringLiteral( "summary" ) )
     {
         return { QCoreApplication::translate( "Corry", "Ready to install" ),
@@ -163,28 +171,37 @@ corryHeading( const QString& module )
     return {};
 }
 
-/// Wraps a page in Corry's title and subtitle, or returns it unchanged.
+/** Wraps a page in Corry's soft white card, with the page's title and
+ * subtitle when it has one. Other brandings get the widget unchanged.
+ */
 QWidget*
 corryPage( ViewStep* step )
 {
-    const auto heading = corryHeading( step->moduleInstanceKey().module() );
-    if ( !isCorry() || heading.first.isEmpty() )
+    if ( !isCorry() )
     {
         return step->widget();
     }
+    const auto heading = corryHeading( step->moduleInstanceKey().module() );
     auto* page = new QWidget;
     page->setObjectName( QStringLiteral( "corryPage" ) );
-    auto* layout = new QVBoxLayout( page );
-    layout->setContentsMargins( 24, 18, 24, 0 );
+    auto* pageLayout = new QVBoxLayout( page );
+    pageLayout->setContentsMargins( 10, 0, 10, 0 );
+    auto* card = new CorryCard( page, QMargins( 30, 22, 30, 20 ) );
+    card->setObjectName( QStringLiteral( "corryPageCard" ) );
+    pageLayout->addWidget( card );
+    auto* layout = new QVBoxLayout( card );
     layout->setSpacing( 4 );
-    auto* title = new QLabel( heading.first, page );
-    title->setObjectName( QStringLiteral( "corryPageTitle" ) );
-    auto* subtitle = new QLabel( heading.second, page );
-    subtitle->setObjectName( QStringLiteral( "corryPageSubtitle" ) );
-    subtitle->setWordWrap( true );
-    layout->addWidget( title );
-    layout->addWidget( subtitle );
-    layout->addSpacing( 8 );
+    if ( !heading.first.isEmpty() )
+    {
+        auto* title = new QLabel( heading.first, card );
+        title->setObjectName( QStringLiteral( "corryPageTitle" ) );
+        auto* subtitle = new QLabel( heading.second, card );
+        subtitle->setObjectName( QStringLiteral( "corryPageSubtitle" ) );
+        subtitle->setWordWrap( true );
+        layout->addWidget( title );
+        layout->addWidget( subtitle );
+        layout->addSpacing( 10 );
+    }
     layout->addWidget( step->widget(), 1 );
     return page;
 }
@@ -207,7 +224,8 @@ ViewManager::insertViewStep( int before, ViewStep* step )
         QLayout* layout = step->widget()->layout();
         if ( layout )
         {
-            const auto margins = step->widgetMargins( m_panelSides );
+            // Corry's page card already pads its content.
+            const auto margins = isCorry() ? QSize( 2, 2 ) : step->widgetMargins( m_panelSides );
             layout->setContentsMargins( margins.width(), margins.height(), margins.width(), margins.height() );
         }
 

@@ -20,7 +20,7 @@ from pathlib import Path
 config, demo = Path(sys.argv[1]), sys.argv[2]
 settings = yaml.safe_load((config / 'settings.conf').read_text())
 settings['modules-search'] = ['local', demo]
-settings['sequence'] = [{'show': ['welcome', 'welcome@check', 'locale', 'keyboard', 'users', 'summary']},
+settings['sequence'] = [{'show': ['welcome', 'welcome@check', 'locale', 'keyboard', 'users', 'corrysystem', 'summary']},
                         {'exec': ['corrydemo']}, {'show': ['finished']}]
 (config / 'settings.conf').write_text(yaml.safe_dump(settings, sort_keys=False))
 check = yaml.safe_load((config / 'modules/welcomecheck.conf').read_text())
@@ -36,20 +36,22 @@ sleep 18
 # The 1120x780 window is centered on the 1280x860 screen.
 shot() { xdotool mousemove 1270 850; sleep 0.5; import -window root -crop 1120x780+80+40 +repage "$out/$distro-$1.png"; }
 click() { xdotool mousemove "$1" "$2" click 1; sleep "${3:-1.5}"; }
-next() { click 980 799 2; }
+# The Next button answers its keyboard accelerator wherever it is.
+next() { xdotool key alt+n; sleep 2; }
 shot 01-welcome; next
 sleep 2; shot 02-system-check; next
 shot 03-location; next
 shot 04-keyboard; next
-# Field positions below Corry's page heading.
-click 237 313; xdotool type --delay 20 'Hugo Moniz'
-click 237 529; xdotool type a; click 480 529; xdotool type a
+# Field positions inside Corry's page card (see docs/screenshots to re-check).
+click "${CORRY_NAME_X:-280}" "${CORRY_NAME_Y:-333}"; xdotool type --delay 20 'Hugo Moniz'
+click "${CORRY_PASS_X:-280}" "${CORRY_PASS_Y:-549}"; xdotool type a; click "${CORRY_PASS2_X:-523}" "${CORRY_PASS_Y:-549}"; xdotool type a
 shot 07-users
-click 125 603; shot 08-users-admin-password; click 125 603
-next; shot 09-summary
-next; shot 10-confirm
+click "${CORRY_ROOT_X:-168}" "${CORRY_ROOT_Y:-623}"; shot 08-users-admin-password; click "${CORRY_ROOT_X:-168}" "${CORRY_ROOT_Y:-623}"
+next; shot 09-system
+next; shot 10-summary
+next; shot 11-confirm
 # "Install now" is the default button of the confirmation dialog.
-xdotool key Return; sleep 6; shot 11-install
-sleep 10; shot 12-install-slides
-sleep 20; shot 13-finish
+xdotool key Return; sleep 6; shot 12-install
+sleep 10; shot 13-install-slides
+sleep 20; shot 14-finish
 echo "Screenshots written to $out"

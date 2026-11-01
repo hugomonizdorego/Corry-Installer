@@ -246,7 +246,17 @@ getWidgetNavigation( Calamares::DebugWindowManager*,
         bottomLayout->addWidget( quit );
     }
 
-    bottomLayout->setContentsMargins( 0, 0, 6, 6 );
+    if ( Calamares::Branding::instance()->componentName() == QStringLiteral( "corry" ) )
+    {
+        // Corry: the buttons line up with the page card above them.
+        navigation->setObjectName( "corryNavigation" );
+        bottomLayout->setContentsMargins( 28, 6, 28, 16 );
+        bottomLayout->setSpacing( 10 );
+    }
+    else
+    {
+        bottomLayout->setContentsMargins( 0, 0, 6, 6 );
+    }
     navigation->setLayout( bottomLayout );
     return navigation;
 }

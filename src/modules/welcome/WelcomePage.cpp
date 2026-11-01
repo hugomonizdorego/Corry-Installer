@@ -102,8 +102,9 @@ WelcomePage::setCorryPage( const QString& page )
         return;
     }
     m_corryPage = page;
-    ui->horizontalLayout->setContentsMargins( 24, 20, 24, 20 );
-    ui->horizontalLayout->setSpacing( 32 );
+    // The page card (ViewManager) already pads the content.
+    ui->horizontalLayout->setContentsMargins( 6, 4, 6, 4 );
+    ui->horizontalLayout->setSpacing( 36 );
     ui->mainText->setAlignment( Qt::AlignLeft | Qt::AlignVCenter );
     QFont titleFont = ui->mainText->font();
     titleFont.setPointSize( 30 );

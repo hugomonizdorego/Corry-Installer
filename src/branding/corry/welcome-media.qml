@@ -2,21 +2,26 @@
 import QtQuick 2.15
 import "media.js" as Media
 // Corry welcome page media: a muted, looping product video over the welcome
-// image. Without a video, or without QtMultimedia, only the image is shown.
-// Shown in a fixed 560x315 (16:9) frame. Recommended video: 1280x720 WebM.
+// image, in a soft card. Without a video, or without QtMultimedia, only the
+// image is shown. Shown in a fixed 560x315 (16:9) frame. Recommended video:
+// 1280x720 WebM.
 Item {
     id: root
     implicitWidth: 560
     implicitHeight: 315
     property url poster: typeof corryPoster !== "undefined" ? corryPoster : Qt.resolvedUrl(Media.media.poster)
     property url video: Media.media.video ? Qt.resolvedUrl(Media.media.video) : ""
+    // Soft shadow under the card.
+    Rectangle { anchors.fill: card; anchors.topMargin: 10; anchors.leftMargin: 6; anchors.rightMargin: 6; radius: 24; color: "#c5d2e4"; opacity: 0.35 }
+    Rectangle { anchors.fill: card; anchors.topMargin: 5; anchors.leftMargin: 3; anchors.rightMargin: 3; radius: 23; color: "#c5d2e4"; opacity: 0.35 }
     Rectangle {
         id: card
         anchors.fill: parent
-        radius: 20; color: "#ffffff"; border.color: "#e5e7eb"
+        anchors.bottomMargin: 10
+        radius: 22; color: "#f5f8fd"
         Image {
             id: posterImage
-            anchors.fill: parent; anchors.margins: 10
+            anchors.fill: parent; anchors.margins: 12
             source: root.poster
             fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true
         }

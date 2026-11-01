@@ -24,10 +24,10 @@ BRAND = ROOT / 'src/branding/corry'
 PRODUCT = 'DebION GNU/Linux'
 ACCENT = '#6445a4'
 TINT = '#f0ecf8'
-MUTED = '#4b5563'
+MUTED = '#64748b'
 # The step labels Calamares shows for the Corry sequence in settings.conf.
-STEPS = ['Welcome', 'System check', 'Location', 'Keyboard', 'Partitions', 'Users', 'Summary', 'Install', 'Finish']
-WELCOME, CHECK, LOCATION, KEYBOARD, PARTITIONS, USERS, SUMMARY, INSTALL, FINISH = range(len(STEPS))
+STEPS = ['Welcome', 'System check', 'Location', 'Keyboard', 'Partitions', 'Users', 'System', 'Summary', 'Install', 'Finish']
+WELCOME, CHECK, LOCATION, KEYBOARD, PARTITIONS, USERS, SYSTEM, SUMMARY, INSTALL, FINISH = range(len(STEPS))
 
 
 class Steps(QAbstractListModel):
@@ -80,6 +80,34 @@ class Debug(QObject):
                                 'Development preview with sample data. Based on Calamares; original Corry branding. No disk access.')
 
 
+class SoftCard(QFrame):
+    """White card with a soft shadow, like the real page card (Calamares::CorryCard)."""
+    SHADOW = (18, 10, 18, 26)  # blur 18, offset 8
+
+    def __init__(self):
+        super().__init__()
+        self.setContentsMargins(18 + 30, 10 + 22, 18 + 30, 26 + 20)
+
+    def paintEvent(self, event):
+        from PySide6.QtGui import QPainter, QColor
+        from PySide6.QtCore import QRectF
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        left, top, right, bottom = self.SHADOW
+        card = QRectF(self.rect()).adjusted(left, top, -right, -bottom)
+        steps = 16
+        for i in range(steps, 0, -1):
+            spread = 18 * i / steps
+            fade = (steps + 1 - i) / steps
+            color = QColor(43, 74, 122)
+            color.setAlphaF(0.017 * fade * fade)
+            painter.setBrush(color)
+            painter.drawRoundedRect(card.translated(0, 8).adjusted(-spread, -spread, spread, spread), 22 + spread, 22 + spread)
+        painter.setBrush(QColor('#ffffff'))
+        painter.drawRoundedRect(card, 22, 22)
+
+
 def label(text, size=11, bold=False, color=None, name=None):
     item = QLabel(text)
     item.setWordWrap(True)
@@ -121,7 +149,7 @@ class Preview(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         self.header = QQuickWidget()
-        self.header.setFixedHeight(116)
+        self.header.setFixedHeight(118)
         self.header.setResizeMode(QQuickWidget.SizeRootObjectToView)
         ctx = self.header.rootContext()
         ctx.setContextProperty('ViewManager', self.steps)
@@ -137,16 +165,21 @@ class Preview(QWidget):
         self.header.setContent(QUrl.fromLocalFile(str(qml)), component, obj)
         outer.addWidget(self.header)
         right = QVBoxLayout()
-        right.setContentsMargins(40, 24, 40, 20)
-        right.setSpacing(12)
+        right.setContentsMargins(10, 0, 10, 0)
+        right.setSpacing(0)
         outer.addLayout(right, 1)
+        self.card = SoftCard()
         self.page = QWidget()
         self.layout = QVBoxLayout(self.page)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(16)
-        right.addWidget(self.page, 1)
+        self.layout.setSpacing(14)
+        card_layout = QVBoxLayout(self.card)
+        card_layout.addWidget(self.page)
+        right.addWidget(self.card, 1)
         nav = QHBoxLayout()
-        note = label('Design preview · sample data · no disk is read or changed', 9, color='#9ca3af')
+        nav.setContentsMargins(18, 6, 18, 16)
+        nav.setSpacing(10)
+        note = label('Design preview · sample data · no disk is read or changed', 9, color='#94a3b8')
         note.setWordWrap(False)
         nav.addWidget(note)
         nav.addStretch()
@@ -158,6 +191,7 @@ class Preview(QWidget):
         self.next.setObjectName('view-button-next')
         self.next.clicked.connect(lambda: self.show_step(self.steps.step + 1))
         nav.addWidget(self.next)
+        nav.addSpacing(12)
         self.cancel = QPushButton('Cancel')
         self.cancel.setObjectName('view-button-cancel')
         self.cancel.clicked.connect(self.close)
@@ -316,6 +350,45 @@ class Preview(QWidget):
         cl.addWidget(QCheckBox('Log in automatically without asking for the password'))
         self.layout.addWidget(box)
         self.validate_password()
+
+    def page_system(self):
+        self.title('System components', 'Choose the init system and the boot loader of the new system. The defaults are '
+                   'tested and work offline; the alternatives need an internet connection.')
+        self.layout.addWidget(label('<b>Online.</b> Every option can be downloaded. Computer: UEFI, amd64.', 10, color=MUTED, name='corryHint'))
+        for heading, options in [('Init system', [('systemd', 'Default · Works offline', "Debian's default since Debian 8. Starts services in parallel and manages the whole system.", True),
+                                                   ('SysVinit', 'Needs internet', 'The classic sequential init of Linux, with runlevels and /etc/init.d scripts.', False),
+                                                   ('OpenRC', 'Needs internet', 'Dependency-based service manager: more modern than SysVinit, lighter than systemd.', False),
+                                                   ('runit', 'Needs internet', 'Very small and fast service supervision; a good fit for old hardware.', False)]),
+                                 ('Boot loader', [('GRUB 2', 'Default · Works offline', "Debian's standard for BIOS and UEFI. Finds other operating systems for dual boot.", True),
+                                                  ('systemd-boot', 'UEFI only · Needs internet', 'Fast, minimal text menu made for UEFI only.', False),
+                                                  ('rEFInd', 'UEFI only · Needs internet', 'Graphical boot menu with themes and icons; reliable for multi-boot computers.', False),
+                                                  ('Syslinux / EXTLINUX', 'BIOS only', 'This computer starts with UEFI; this loader is for BIOS.', None)])]:
+            self.layout.addWidget(label(heading, 11, True, name='corrySectionTitle'))
+            grid = QGridLayout()
+            grid.setHorizontalSpacing(12)
+            grid.setVerticalSpacing(10)
+            for n, (name, badges, text, selected) in enumerate(options):
+                option = QFrame()
+                option.setObjectName('corryOption')
+                option.setProperty('selected', bool(selected))
+                option.setEnabled(selected is not None)
+                row = QHBoxLayout(option)
+                row.setContentsMargins(14, 10, 14, 10)
+                from PySide6.QtWidgets import QRadioButton
+                radio = QRadioButton()
+                radio.setChecked(bool(selected))
+                row.addWidget(radio, 0, Qt.AlignTop)
+                column = QVBoxLayout()
+                head = QHBoxLayout()
+                head.addWidget(label(name, 11, True, name='corryOptionTitle'))
+                for badge in badges.split(' · '):
+                    head.addWidget(label(badge, 8, True, name='corryBadgeWarning' if 'internet' in badge else 'corryBadgeMuted'))
+                head.addStretch()
+                column.addLayout(head)
+                column.addWidget(label(text, 9, color=MUTED, name='corryOptionText' if selected is not None else 'corryOptionReason'))
+                row.addLayout(column, 1)
+                grid.addWidget(option, n // 2, n % 2)
+            self.layout.addLayout(grid)
 
     def page_summary(self):
         self.title('Ready to install', 'Check your choices. Nothing has been changed yet.')
@@ -481,8 +554,17 @@ class Preview(QWidget):
 
 
 def themed(path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('corry_branding', ROOT / 'tools/corry-branding.py')
+    branding = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(branding)
     version = (ROOT / 'VERSION').read_text().strip()
-    path.write_text(path.read_text().replace('#6445a4', ACCENT).replace('#f0ecf8', TINT).replace('@CORRY_VERSION@', version))
+    text = path.read_text()
+    for placeholder, value in [(branding.ACCENT_LIGHT, branding.shade(ACCENT, 1.45, 1.1)),
+                               (branding.ACCENT_DARK, branding.shade(ACCENT, 0.72)), (branding.ACCENT, ACCENT),
+                               (branding.TINT, TINT), ('@CORRY_VERSION@', version)]:
+        text = text.replace(placeholder, value)
+    path.write_text(text)
 
 
 def main():
@@ -502,7 +584,7 @@ def main():
         # Same substitution as tools/install-profile.sh (tools/corry-branding.py).
         slides = [{k: s.get(k, '') for k in ['image', 'title', 'description']} for s in profile['slides']]
         (BRAND / 'slides/Slides.js').write_text('var slides = ' + __import__('json').dumps(slides) + ';\n')
-        for name in ['stylesheet.qss', 'corry-mark.svg', 'calamares-sidebar.qml', 'show.qml', 'SlideControl.qml']:
+        for name in ['stylesheet.qss', 'corry-mark.svg', 'calamares-sidebar.qml', 'show.qml', 'SlideControl.qml', 'welcome-media.qml']:
             themed(BRAND / name)
         app = QApplication(sys.argv[:1])
         app.setStyle('Fusion')

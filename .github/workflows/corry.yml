@@ -110,11 +110,54 @@ jobs:
           path: dist/*
           retention-days: 30
 
+  init-switch:
+    # The corryinit job, for real, on a live-like Debian system: it must refuse
+    # while GDM is installed, and must switch to SysVinit and purge systemd
+    # otherwise. The boot loader packages Corry offers are checked to exist.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: [stable, testing]
+    container: debian:${{ matrix.debian }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - run: apt-get update && apt-get install -y git ca-certificates python3 python3-yaml
+      - uses: actions/checkout@v4
+      - name: Live-like system with systemd, logind, NetworkManager, LightDM, an Xfce desktop, PipeWire and GDM
+        run: |
+          apt-get install -y --no-install-recommends systemd-sysv libpam-systemd dbus-user-session polkitd network-manager \
+            lightdm lightdm-gtk-greeter xfce4-session xfce4-panel xfdesktop4 thunar pipewire-pulse wireplumber gdm3
+      - name: With GDM installed the switch is refused and systemd stays
+        run: |
+          printf '%s' '{"corrySystem": {"init": {"id": "sysvinit", "name": "SysVinit", "packages": ["sysvinit-core", "elogind", "libpam-elogind", "orphan-sysvinit-scripts"]}}}' > storage.json
+          python3 tools/ci/run-job.py corryinit --root / --allow-live-root --storage storage.json | tee out.txt
+          grep -q 'gdm3' out.txt
+          test "$(readlink -f /sbin/init)" = /usr/lib/systemd/systemd
+          python3 -c "import json; s = json.load(open('storage.json')); assert s['corrySystem']['init']['installed'] == 'systemd', s"
+      - name: Without GDM the switch succeeds, /sbin/init is SysVinit and systemd is purged
+        run: |
+          apt-get purge -y gdm3 && apt-get autoremove --purge -y
+          python3 tools/ci/run-job.py corryinit --root / --allow-live-root --storage storage.json | tee out.txt
+          dpkg-query -S "$(readlink -f /sbin/init)" | grep -q '^sysvinit-core:'
+          for p in systemd-sysv libpam-systemd systemd; do
+            test "$(dpkg-query -W -f='${db:Status-Abbrev}' $p 2>/dev/null)" != "ii " || { echo "$p is still installed"; exit 1; }
+          done
+          dpkg-query -W -f='${db:Status-Abbrev}' elogind libpam-elogind | grep -c '^ii' | grep -qx 2
+          python3 -c "import json; s = json.load(open('storage.json')); assert s['corrySystem']['init']['installed'] == 'sysvinit', s"
+      - name: Boot loader packages offered by Corry
+        run: |
+          for p in systemd-boot extlinux syslinux-common u-boot-menu refind; do
+            apt-cache show $p >/dev/null 2>&1 && echo "$p: available" || echo "$p: not available on this base (Corry falls back to GRUB)"
+          done
+          apt-cache show systemd-boot extlinux syslinux-common u-boot-menu >/dev/null
+
   release:
     # Push a tag such as v0.2, or run the workflow by hand with "release",
     # to publish both packages as a GitHub release.
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
-    needs: package
+    needs: [package, init-switch]
     runs-on: ubuntu-latest
     permissions:
       contents: write

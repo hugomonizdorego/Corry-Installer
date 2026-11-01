@@ -298,12 +298,25 @@ def modify_grub_default(partitions, root_mount_point, distributor):
     return None
 
 
+def corry_other_bootloader():
+    """True when Corry's System page chose a boot loader other than GRUB and
+    the corrybootloader job installed it (it falls back to "grub" otherwise)."""
+    system = libcalamares.globalstorage.value("corrySystem") or {}
+    chosen = (system.get("bootloader") or {}).get("id", "grub")
+    if chosen != "grub":
+        libcalamares.utils.debug("Corry: boot loader '{}' is handled by corrybootloader; skipping GRUB.".format(chosen))
+        return True
+    return False
+
+
 def run():
     """
     Calls routine with given parameters to modify '/etc/default/grub'.
 
     :return:
     """
+    if corry_other_bootloader():
+        return None
     fw_type = libcalamares.globalstorage.value("firmwareType")
     partitions = libcalamares.globalstorage.value("partitions")
     root_mount_point = libcalamares.globalstorage.value("rootMountPoint")

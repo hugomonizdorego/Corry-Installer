@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+$schema: https://json-schema.org/schema#
+$id: https://calamares.io/schemas/corrybootloader
+additionalProperties: false
+type: object
+properties:
+  checkUrl: { type: string, pattern: "^https?://" }
+  timeout: { type: integer, minimum: 0, maximum: 60 }
+  kernelParams: { type: array, items: { type: string } }
+  grubEfiDirectory: { type: string }
+  grubPackages: { type: array, items: { type: string } }

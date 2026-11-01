@@ -1,3 +1,20 @@
+corry (0.3) unstable; urgency=medium
+
+  * New look: light page, soft white cards, pill buttons and a gradient
+    main action; timeline header; redesigned slideshow and welcome media.
+  * New "System components" page: choice of init system (systemd default;
+    SysVinit, OpenRC, runit) and boot loader (GRUB default; systemd-boot,
+    rEFInd, Syslinux/EXTLINUX, U-Boot menu). Alternatives need internet and
+    are checked against the firmware, architecture, filesystems, Secure Boot
+    and the desktop; the replaced default is removed from the new system, and
+    any failure falls back to the default with a warning.
+  * Jobs corryinit and corrybootloader; grubcfg and bootloader step aside
+    when another loader was installed.
+  * Time zone preselected: Asia/Dili (Timor-Leste).
+  * Documented exit codes of the launcher and the preflight check.
+
+ -- Hugo Moniz do Rego <hugomonizdorego@angelinojoana.com>  Sun, 01 Nov 2026 10:40:48 +0000
+
 corry (0.2) unstable; urgency=medium
 
   * One complete package per distribution: corry-edukasaun (built on Debian

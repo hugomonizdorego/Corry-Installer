@@ -21,19 +21,32 @@ PROFILE = ROOT / 'config/corry'
 DISTROS = ['edukasaun', 'debion']
 
 
-def fake_calamares(values=None, configuration=None, call=None):
-    values = values or {}
+def fake_calamares(values=None, configuration=None, call=None, process_output=None):
+    """A stand-in for libcalamares: global storage, job configuration and logging.
+
+    @p call answers target_env_call (an exit code); @p process_output answers
+    target_env_process_output (a string, or raise CalledProcessError).
+    """
+    values = values if values is not None else {}
     log = types.SimpleNamespace(warnings=[], progress=[])
+
+    def default_output(args, *rest):
+        return ''
     return types.SimpleNamespace(
-        globalstorage=types.SimpleNamespace(value=lambda key: values.get(key)),
+        globalstorage=types.SimpleNamespace(value=lambda key: values.get(key), insert=values.__setitem__,
+                                            contains=lambda key: key in values),
         job=types.SimpleNamespace(configuration=configuration or {}, setprogress=log.progress.append),
-        utils=types.SimpleNamespace(target_env_call=call or (lambda *args: 0), warning=log.warnings.append,
-                                    debug=lambda *args: None),
-        log=log)
+        utils=types.SimpleNamespace(target_env_call=call or (lambda *args: 0),
+                                    target_env_process_output=process_output or default_output,
+                                    check_target_env_call=call or (lambda *args: 0),
+                                    check_target_env_output=process_output or default_output,
+                                    warning=log.warnings.append, debug=lambda *args: None,
+                                    gettext_path=lambda: None, gettext_languages=lambda: []),
+        log=log, values=values)
 
 
 def load_module(name, fake, path=None):
-    with patch.dict(sys.modules, {'libcalamares': fake}):
+    with patch.dict(sys.modules, {'libcalamares': fake, 'libcalamares.utils': fake.utils}):
         spec = importlib.util.spec_from_file_location(name, path or ROOT / f'src/modules/{name}/main.py')
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -68,19 +81,54 @@ class SequenceTests(unittest.TestCase):
             if schema.exists():
                 jsonschema.Draft7Validator(yaml.safe_load(schema.read_text())).validate(yaml.safe_load(config.read_text()))
         shown = settings['sequence'][0]['show']
-        self.assertEqual(shown, ['welcome', 'welcome@check', 'locale', 'keyboard', 'partition', 'users', 'summary'])
+        self.assertEqual(shown, ['welcome', 'welcome@check', 'locale', 'keyboard', 'partition', 'users',
+                                 'corrysystem', 'summary'])
         jobs = settings['sequence'][1]['exec']
         for removed in ['packagechooser', 'corryprepare', 'corrypackages']:
             self.assertNotIn(removed, shown + jobs)
             self.assertFalse((ROOT / 'src/modules' / removed / 'module.desc').exists())
         self.assertEqual(jobs[0], 'partition')
-        order = ['unpackfs', 'users', 'corrycleanup', 'corryupdate', 'corrygrub', 'initramfs', 'grubcfg', 'bootloader']
+        # The init system is switched after the online repair and before the
+        # initramfs; the alternative boot loader is installed after the initramfs
+        # exists and before GRUB would be configured.
+        order = ['unpackfs', 'users', 'corrycleanup', 'corryupdate', 'corryinit', 'corrygrub', 'initramfs',
+                 'corrybootloader', 'grubcfg', 'bootloader']
         for before, after in zip(order, order[1:]):
             self.assertLess(jobs.index(before), jobs.index(after), (before, after))
         self.assertEqual(jobs[-1], 'umount')
         build = (ROOT / 'tools/build-corry.sh').read_text()
         for name in shown + jobs + ['finished']:
             self.assertIn(' ' + name.split('@')[0] + ' ', build)
+        # The profile ships the same module settings the modules are tested with.
+        for name in ['corrysystem', 'corryinit', 'corrybootloader']:
+            self.assertEqual((PROFILE / f'modules/{name}.conf').read_text(),
+                             (ROOT / f'src/modules/{name}/{name}.conf').read_text(), name)
+
+    def test_system_components_options(self):
+        system = yaml.safe_load((PROFILE / 'modules/corrysystem.conf').read_text())
+        init, loaders = system['init'], system['bootloader']
+        self.assertEqual([o['id'] for o in init], ['systemd', 'sysvinit', 'openrc', 'runit'])
+        self.assertEqual([o['id'] for o in loaders], ['grub', 'systemd-boot', 'refind', 'extlinux', 'uboot'])
+        for group in (init, loaders):
+            self.assertTrue(group[0].get('default'))
+            self.assertFalse(group[0].get('packages'))
+            for option in group[1:]:
+                self.assertFalse(option.get('default'), option['id'])
+                self.assertTrue(option['packages'], option['id'])
+                self.assertTrue(option['description'].isascii())
+        # The first package of an init option provides /sbin/init (verified after the switch).
+        self.assertEqual([o['packages'][0] for o in init[1:]], ['sysvinit-core', 'openrc', 'runit-init'])
+        for option in init[1:]:
+            self.assertIn('elogind', option['packages'])
+        by_id = {o['id']: o for o in loaders}
+        self.assertEqual(by_id['systemd-boot']['firmware'], ['efi'])
+        self.assertEqual(by_id['refind']['firmware'], ['efi'])
+        self.assertEqual(by_id['extlinux']['firmware'], ['bios'])
+        self.assertNotIn('btrfs', by_id['extlinux']['filesystems'])
+        self.assertNotIn('xfs', by_id['refind']['filesystems'])
+        self.assertIn('arm64', by_id['uboot']['architectures'])
+        self.assertTrue(by_id['grub'].get('secureBoot'))
+        self.assertFalse(any(o.get('secureBoot') for o in loaders[1:]))
 
     def test_profile_choices(self):
         modules = PROFILE / 'modules'
@@ -98,7 +146,12 @@ class SequenceTests(unittest.TestCase):
         self.assertNotIn('internet', check['requirements']['required'])
         grub = yaml.safe_load((modules / 'grubcfg.conf').read_text())
         self.assertFalse(grub['defaults']['GRUB_DISABLE_OS_PROBER'])
-        self.assertEqual((ROOT / 'VERSION').read_text().strip(), '0.2')
+        # Timor-Leste: Dili is preselected; the live session's clock is left alone.
+        locale = yaml.safe_load((modules / 'locale.conf').read_text())
+        self.assertEqual((locale['region'], locale['zone']), ('Asia', 'Dili'))
+        self.assertFalse(locale['useSystemTimezone'])
+        self.assertEqual(locale['geoip']['style'], 'none')
+        self.assertEqual((ROOT / 'VERSION').read_text().strip(), '0.3')
 
 
 class BrandingTests(unittest.TestCase):
@@ -129,13 +182,31 @@ class BrandingTests(unittest.TestCase):
                 self.assertTrue((brand / media['video']).is_file())
                 self.assertTrue((brand / media['sound']).is_file())
                 accent = source['colors']['accent']
-                for themed in ['stylesheet.qss', 'show.qml', 'corry-mark.svg', 'calamares-sidebar.qml']:
-                    self.assertIn(accent, (brand / themed).read_text())
-                self.assertIn('Corry ' + (ROOT / 'VERSION').read_text().strip(), (brand / 'calamares-sidebar.qml').read_text())
+                branding = self.branding()
+                light, dark = branding.shade(accent, 1.45, 1.1), branding.shade(accent, 0.72)
+                version = (ROOT / 'VERSION').read_text().strip()
+                # Every themed file is the source file with the four placeholder
+                # colors and the version replaced, nothing else.
+                for themed in branding.THEMED:
+                    expected = (ROOT / 'src/branding/corry' / themed).read_text()
+                    for placeholder, value in [(branding.ACCENT_LIGHT, light), (branding.ACCENT_DARK, dark),
+                                               (branding.ACCENT, accent), (branding.TINT, source['colors']['tint']),
+                                               ('@CORRY_VERSION@', version)]:
+                        expected = expected.replace(placeholder, value)
+                    self.assertEqual((brand / themed).read_text(), expected, themed)
+                    if branding.ACCENT in (ROOT / 'src/branding/corry' / themed).read_text():
+                        self.assertIn(accent, expected, themed)
+                stylesheet = (brand / 'stylesheet.qss').read_text()
+                self.assertIn(light, stylesheet)
+                self.assertIn(dark, stylesheet)
+                self.assertIn('Corry ' + version, (brand / 'calamares-sidebar.qml').read_text())
                 self.assertFalse((config / 'modules/packagechooser.conf').exists())
                 grub = yaml.safe_load((config / 'modules/corrygrub.conf').read_text())
                 self.assertEqual(grub['medium'], '/tmp')
                 self.assertEqual(grub['checkUrl'], source['internet-check-url'])
+                for job in ['corryupdate', 'corryinit', 'corrybootloader']:
+                    self.assertEqual(yaml.safe_load((config / f'modules/{job}.conf').read_text())['checkUrl'],
+                                     source['internet-check-url'], job)
                 self.assertEqual(yaml.safe_load((config / 'modules/unpackfs.conf').read_text())['unpack'][0]['source'],
                                  '/tmp/live/Corry image.squashfs')
                 launcher = (root / 'usr/share/applications/corry-installer.desktop').read_text()
@@ -285,6 +356,27 @@ esac
             data['sound']['file'] = ''
             (folder / 'distro.yaml').write_text(yaml.safe_dump(data))
             self.assertEqual(branding.load(folder)['welcome']['video'], '')
+
+    def test_derived_accent_shades(self):
+        branding = self.branding()
+        for accent in ['#246452', '#2563eb', '#6445a4']:
+            light, dark = branding.shade(accent, 1.45, 1.1), branding.shade(accent, 0.72)
+            self.assertTrue(branding.COLOR.match(light) and branding.COLOR.match(dark), accent)
+            luminance = lambda c: sum(int(c[i:i + 2], 16) for i in (1, 3, 5))
+            self.assertGreater(luminance(light), luminance(accent))
+            self.assertLess(luminance(dark), luminance(accent))
+        # distro.yaml may set the shades itself.
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp) / 'mine'
+            shutil.copytree(ROOT / 'config/distros/debion', folder)
+            data = yaml.safe_load((folder / 'distro.yaml').read_text())
+            data['colors']['accent-light'] = '#abcdef'
+            (folder / 'distro.yaml').write_text(yaml.safe_dump(data))
+            self.assertEqual(branding.load(folder)['colors']['accent-light'], '#abcdef')
+            data['colors']['accent-dark'] = 'dark'
+            (folder / 'distro.yaml').write_text(yaml.safe_dump(data))
+            with self.assertRaisesRegex(branding.BrandingError, 'accent-dark'):
+                branding.load(folder)
 
     def test_media_size_advice(self):
         branding = self.branding()
@@ -490,6 +582,437 @@ class UpdateTests(unittest.TestCase):
         calls, warnings = self.run_update(True, failing=('update',))
         self.assertFalse(any(c[:2] == ['apt-get', 'upgrade'] for c in calls))
         self.assertTrue(warnings)
+
+
+class InitTests(unittest.TestCase):
+    """corryinit: switch the init system only when apt removes nothing but systemd."""
+
+    def setup(self, wanted='sysvinit', online=True, removed='systemd-sysv libpam-systemd', install_code=0,
+              owner='sysvinit-core', purge_extra='', configuration=None):
+        calls = []
+        system = {'init': {'id': wanted, 'name': wanted, 'default': wanted == 'systemd',
+                           'packages': [] if wanted == 'systemd' else
+                           {'sysvinit': ['sysvinit-core', 'elogind', 'libpam-elogind'],
+                            'runit': ['runit-init', 'elogind', 'libpam-elogind']}[wanted]}}
+
+        def call(args, stdin='', timeout=0):
+            calls.append(args)
+            if 'install' in args and '-s' not in args and 'apt-get' in args:
+                return install_code
+            return 0
+
+        def process_output(args, callback=None, stdin='', timeout=0):
+            calls.append(args)
+            if '-s' in args and 'install' in args:
+                return ''.join(f'Remv {p} [1]\n' for p in removed.split()) + 'Inst sysvinit-core (3.14 Debian)\n'
+            if '-s' in args and 'purge' in args:
+                requested = args[args.index('purge') + 1:]
+                # Purging systemd itself may drag another package along (purge_extra).
+                return ''.join(f'Remv {p} [1]\n' for p in requested) + (purge_extra if 'systemd' in requested else '')
+            if args[0] == 'dpkg-query' and '-W' in args:
+                return 'ii ' if args[-1] in ('systemd-sysv', 'libpam-systemd', 'systemd', 'sysvinit-core', 'sysv-rc') else 'un '
+            if args[0] == 'readlink':
+                return '/usr/sbin/init\n'
+            if args[0] == 'dpkg-query' and '-S' in args:
+                return f'{owner}: /usr/sbin/init\n'
+            return ''
+        temp = tempfile.TemporaryDirectory()
+        root = Path(temp.name)
+        (root / 'etc').mkdir()
+        (root / 'etc/resolv.conf').write_text('# target\n')
+        fake = fake_calamares({'rootMountPoint': temp.name, 'corrySystem': system},
+                              configuration or yaml.safe_load((PROFILE / 'modules/corryinit.conf').read_text()),
+                              call, process_output)
+        module = load_module('corryinit', fake)
+        with patch.object(module, 'online', return_value=online):
+            result = module.run()
+        self.assertFalse((root / 'usr/sbin/policy-rc.d').exists())
+        self.assertEqual((root / 'etc/resolv.conf').read_text(), '# target\n')
+        temp.cleanup()
+        return result, calls, fake
+
+    def test_default_init_changes_nothing(self):
+        result, calls, fake = self.setup('systemd')
+        self.assertIsNone(result)
+        self.assertEqual(calls, [])
+        self.assertEqual(fake.log.warnings, [])
+
+    def test_offline_keeps_systemd(self):
+        result, calls, fake = self.setup(online=False)
+        self.assertIsNone(result)
+        self.assertEqual(calls, [])
+        self.assertIn('offline', fake.log.warnings[0])
+        self.assertEqual(fake.values['corrySystem']['init']['installed'], 'systemd')
+
+    def test_desktop_that_needs_systemd_blocks_the_switch(self):
+        result, calls, fake = self.setup(removed='systemd-sysv gdm3 gnome-shell')
+        self.assertIsNone(result)
+        self.assertFalse(any('install' in c and '-s' not in c for c in calls if 'apt-get' in c))
+        self.assertIn('gdm3', fake.log.warnings[0])
+        self.assertIn('gnome-shell', fake.log.warnings[0])
+        self.assertEqual(fake.values['corrySystem']['init']['installed'], 'systemd')
+
+    def test_installed_gdm_is_refused_before_apt_runs(self):
+        calls = []
+
+        def process_output(args, callback=None, stdin='', timeout=0):
+            calls.append(args)
+            if args[0] == 'dpkg-query' and '-W' in args:
+                return 'ii ' if args[-1] in ('gdm3', 'systemd-sysv') else 'un '
+            return ''
+        with tempfile.TemporaryDirectory() as temp:
+            (Path(temp) / 'etc').mkdir()
+            system = {'init': {'id': 'runit', 'name': 'runit', 'packages': ['runit-init', 'elogind']}}
+            fake = fake_calamares({'rootMountPoint': temp, 'corrySystem': system},
+                                  yaml.safe_load((PROFILE / 'modules/corryinit.conf').read_text()),
+                                  lambda args, *rest: calls.append(args) or 0, process_output)
+            module = load_module('corryinit', fake)
+            with patch.object(module, 'online', return_value=True):
+                self.assertIsNone(module.run())
+        self.assertFalse(any('apt-get' in c and 'clean' not in c for c in calls))
+        self.assertIn('gdm3 need systemd', fake.log.warnings[-1])
+        self.assertEqual(fake.values['corrySystem']['init']['installed'], 'systemd')
+
+    def test_apt_flags_for_debian_testing(self):
+        module = load_module('corryinit', fake_calamares())
+        self.assertIn('--allow-remove-essential', module.APT)  # systemd-sysv is Essential on Debian testing
+        self.assertIn('--no-install-recommends', module.APT)
+
+    def test_switch_then_retire_systemd(self):
+        result, calls, fake = self.setup()
+        self.assertIsNone(result)
+        installs = [c for c in calls if 'apt-get' in c and 'install' in c and '-s' not in c]
+        # The new packages, plus explicit removal of the installed systemd packages
+        # (apt keeps manually installed packages unless asked).
+        self.assertEqual(installs[0][installs[0].index('install') + 1:],
+                         ['sysvinit-core', 'elogind', 'libpam-elogind', 'systemd-sysv-', 'libpam-systemd-', 'systemd-'])
+        simulations = [c for c in calls if 'apt-get' in c and '-s' in c and 'install' in c]
+        self.assertEqual(simulations[0][simulations[0].index('install') + 1:], installs[0][installs[0].index('install') + 1:])
+        purges = [c for c in calls if 'apt-get' in c and 'purge' in c and '-s' not in c]
+        self.assertEqual(len(purges), 1)
+        self.assertEqual(sorted(purges[0][purges[0].index('purge') + 1:]), ['libpam-systemd', 'systemd', 'systemd-sysv'])
+        self.assertEqual(fake.log.warnings, [])
+        self.assertEqual(fake.values['corrySystem']['init']['installed'], 'sysvinit')
+        self.assertIn('removed: systemd-sysv, libpam-systemd, systemd', fake.values['corrySystem']['init']['message'])
+
+    def test_systemd_stays_when_something_still_needs_it(self):
+        # Purging systemd would also remove another package: keep it, drop only what is safe.
+        result, calls, fake = self.setup(purge_extra='Remv something-else [1]\n')
+        purges = [c for c in calls if 'apt-get' in c and 'purge' in c and '-s' not in c]
+        self.assertEqual(len(purges), 1)
+        self.assertEqual(sorted(purges[0][purges[0].index('purge') + 1:]), ['libpam-systemd', 'systemd-sysv'])
+        self.assertTrue(any('stay installed' in w for w in fake.log.warnings))
+        self.assertEqual(fake.values['corrySystem']['init']['installed'], 'sysvinit')
+
+    def test_failed_switch_restores_systemd(self):
+        result, calls, fake = self.setup('runit', install_code=1, owner='systemd-sysv')
+        self.assertIsNone(result)
+        self.assertTrue(any('--fix-broken' in c for c in calls))
+        self.assertIn('keeps systemd', fake.log.warnings[-1])
+        self.assertEqual(fake.values['corrySystem']['init']['installed'], 'systemd')
+        self.assertFalse(any('purge' in c for c in calls))
+
+    def test_wrong_init_owner_is_reported(self):
+        result, calls, fake = self.setup(owner='systemd-sysv')
+        self.assertIn('/sbin/init still belongs to systemd-sysv', fake.log.warnings[-1])
+        self.assertFalse(any('purge' in c and '-s' not in c for c in calls))
+
+    def test_openrc_replaces_sysv_rc_and_apt_refusals_are_explained(self):
+        calls = []
+
+        def process_output(args, callback=None, stdin='', timeout=0):
+            calls.append(args)
+            if '-s' in args and 'install' in args:
+                raise subprocess.CalledProcessError(100, args, output='E: Unable to satisfy dependencies. Reached two '
+                                                    'conflicting assignments:\n   1. systemd-sysv:amd64 is selected for install\n')
+            if args[0] == 'dpkg-query' and '-W' in args:
+                return 'ii ' if args[-1] in ('systemd-sysv', 'sysv-rc') else 'un '
+            return ''
+        with tempfile.TemporaryDirectory() as temp:
+            (Path(temp) / 'etc').mkdir()
+            system = {'init': {'id': 'openrc', 'name': 'OpenRC', 'packages': ['openrc', 'sysvinit-core', 'elogind']}}
+            fake = fake_calamares({'rootMountPoint': temp, 'corrySystem': system},
+                                  yaml.safe_load((PROFILE / 'modules/corryinit.conf').read_text()),
+                                  lambda args, *rest: 0, process_output)
+            module = load_module('corryinit', fake)
+            with patch.object(module, 'online', return_value=True):
+                self.assertIsNone(module.run())
+        simulation = [c for c in calls if '-s' in c][0]
+        self.assertEqual(simulation[simulation.index('install') + 1:], ['openrc', 'sysvinit-core', 'elogind', 'systemd-sysv-', 'sysv-rc-'])
+        self.assertIn('systemd-sysv:amd64 is selected for install', fake.log.warnings[-1])
+        self.assertIn('keeps systemd', fake.log.warnings[-1])
+        module = load_module('corryinit', fake_calamares())
+        self.assertTrue(module.allowed_removal('systemd-timesyncd', set()))
+        self.assertTrue(module.allowed_removal('libsystemd-shared', set()))
+        self.assertTrue(module.allowed_removal('systemd', set()))
+        self.assertFalse(module.allowed_removal('systemd-boot-manager-x', set()) is False)  # family prefix
+        self.assertFalse(module.allowed_removal('gdm3', set()))
+        self.assertFalse(module.allowed_removal('network-manager', set()))
+
+
+class BootLoaderTests(unittest.TestCase):
+    """corrybootloader: install an alternative loader, remove GRUB, or fall back to GRUB."""
+
+    def make_root(self, temp, efi=True):
+        root = Path(temp)
+        for relative in ['boot/vmlinuz-6.12.0-1-amd64', 'boot/initrd.img-6.12.0-1-amd64', 'boot/vmlinuz-6.11.0-1-amd64',
+                         'boot/initrd.img-6.11.0-1-amd64', 'boot/grub/grub.cfg', 'etc/default/grub', 'etc/grub.d/40_custom',
+                         'usr/lib/EXTLINUX/mbr.bin', 'usr/lib/EXTLINUX/gptmbr.bin',
+                         'usr/share/refind/refind/refind_x64.efi', 'usr/share/refind/refind/drivers_x64/ext4_x64.efi',
+                         'usr/share/refind/refind/drivers_x64/btrfs_x64.efi', 'usr/share/refind/refind/icons/os_linux.png']:
+            (root / relative).parent.mkdir(parents=True, exist_ok=True)
+            (root / relative).write_text('x')
+        (root / 'etc/machine-id').write_text('0123456789abcdef0123456789abcdef\n')
+        (root / 'etc/resolv.conf').write_text('# target\n')
+        if efi:
+            (root / 'boot/efi/EFI/debian').mkdir(parents=True)
+            (root / 'boot/efi/EFI/debian/grubx64.efi').write_bytes(b'GRUB binary')
+            (root / 'boot/efi/EFI/BOOT').mkdir(parents=True)
+            (root / 'boot/efi/EFI/BOOT/BOOTX64.EFI').write_bytes(b'GRUB fallback')
+        return root
+
+    def partitions(self, efi=True, fs='btrfs', separate_boot=False):
+        parts = [{'device': '/dev/sda2', 'fs': fs, 'mountPoint': '/', 'uuid': 'root-uuid'},
+                 {'device': '/dev/sda3', 'fs': 'linuxswap', 'mountPoint': '', 'uuid': 'swap-uuid', 'claimed': True}]
+        if efi:
+            parts.insert(0, {'device': '/dev/sda1', 'fs': 'fat32', 'mountPoint': '/boot/efi', 'uuid': 'ESP1-2345'})
+        if separate_boot:
+            parts.append({'device': '/dev/sda4', 'fs': 'ext4', 'mountPoint': '/boot', 'uuid': 'boot-uuid'})
+        return parts
+
+    def setup(self, temp, loader='systemd-boot', firmware='efi', fs='btrfs', online=True, bootctl_code=0,
+              kernel_install=False, separate_boot=False, packages=None):
+        root = self.make_root(temp, efi=firmware == 'efi')
+        hosts = []
+        calls = []
+        system = {'bootloader': {'id': loader, 'name': loader, 'default': loader == 'grub',
+                                 'packages': packages if packages is not None else
+                                 {'grub': [], 'systemd-boot': ['systemd-boot'], 'refind': ['refind'],
+                                  'extlinux': ['extlinux', 'syslinux-common'], 'uboot': ['u-boot-menu']}[loader]}}
+        values = {'rootMountPoint': temp, 'corrySystem': system, 'firmwareType': firmware,
+                  'efiSystemPartition': '/boot/efi', 'partitions': self.partitions(firmware == 'efi', fs, separate_boot),
+                  'btrfsRootSubvolume': '@' if fs == 'btrfs' else '', 'branding': {'bootloaderEntryName': 'Edukasaun OS'}}
+
+        def call(args, stdin='', timeout=0):
+            calls.append(args)
+            if args[0] == 'bootctl':
+                if bootctl_code == 0 or '--no-variables' in args:
+                    (root / 'boot/efi/EFI/systemd').mkdir(parents=True, exist_ok=True)
+                    (root / 'boot/efi/EFI/systemd/systemd-bootx64.efi').write_text('systemd-boot')
+                    (root / 'boot/efi/EFI/BOOT/BOOTX64.EFI').write_bytes(b'systemd-boot copy')
+                    return 0
+                return 1
+            if args[0] == 'sh' and 'command -v kernel-install' in args[-1]:
+                return 0 if kernel_install else 1
+            if args[0] == 'kernel-install':
+                (root / 'boot/efi/loader/entries').mkdir(parents=True, exist_ok=True)
+                (root / f'boot/efi/loader/entries/id-{args[2]}.conf').write_text('title x\n')
+                return 0
+            if args[0] == 'extlinux':
+                (root / 'boot/extlinux/ldlinux.sys').write_text('x')
+                return 0
+            if args[0] == 'u-boot-update':
+                (root / 'boot/extlinux').mkdir(parents=True, exist_ok=True)
+                (root / 'boot/extlinux/extlinux.conf').write_text('# u-boot-menu\n')
+                return 0
+            return 0
+
+        def process_output(args, callback=None, stdin='', timeout=0):
+            calls.append(args)
+            if args[0] == 'dpkg-query':
+                return 'ii ' if args[-1] in ('grub-pc', 'grub-efi-amd64', 'grub2-common', 'grub-common', 'shim-signed',
+                                             'systemd-boot', 'refind') else 'un '
+            if args[0] == 'dpkg':
+                return 'amd64\n'
+            return ''
+
+        def host(args, timeout=0):
+            hosts.append(args)
+            stdout = 'gpt\n' if args[0] == 'blkid' and firmware == 'efi' else 'dos\n' if args[0] == 'blkid' else ''
+            if args[0] == 'efibootmgr' and '-v' in args:
+                stdout = ('BootOrder: 0001,0002\nBoot0001* debian\tHD(1,GPT,x)/File(\\EFI\\debian\\shimx64.efi)\n'
+                          'Boot0002* Windows Boot Manager\tHD(1,GPT,x)/File(\\EFI\\Microsoft\\Boot\\bootmgfw.efi)\n')
+            return types.SimpleNamespace(returncode=0, stdout=stdout)
+        fake = fake_calamares(values, yaml.safe_load((PROFILE / 'modules/corrybootloader.conf').read_text()), call,
+                              process_output)
+        module = load_module('corrybootloader', fake)
+        with patch.object(module, 'online', return_value=online), patch.object(module, 'host', side_effect=host):
+            result = module.run()
+        self.assertFalse((root / 'usr/sbin/policy-rc.d').exists())
+        self.assertEqual((root / 'etc/resolv.conf').read_text(), '# target\n')
+        return result, calls, hosts, fake, root
+
+    def test_grub_default_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'grub')
+            self.assertIsNone(result)
+            self.assertEqual(calls, [])
+            self.assertTrue((root / 'boot/grub/grub.cfg').exists())
+
+    def test_offline_falls_back_to_grub(self):
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'refind', online=False)
+            self.assertIsNone(result)
+            self.assertEqual(calls, [])
+            self.assertIn('offline', fake.log.warnings[0])
+            self.assertIn('GRUB is installed instead', fake.log.warnings[0])
+            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'grub')
+
+    def test_firmware_mismatch_falls_back_to_grub(self):
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'systemd-boot', firmware='bios')
+            self.assertIn('needs UEFI', fake.log.warnings[0])
+            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'grub')
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'extlinux', firmware='efi')
+            self.assertIn('BIOS boot loader', fake.log.warnings[0])
+            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'grub')
+
+    def test_systemd_boot_without_kernel_install_and_grub_removal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'systemd-boot')
+            self.assertIsNone(result)
+            self.assertEqual(fake.log.warnings, [])
+            cmdline = (root / 'etc/kernel/cmdline').read_text()
+            self.assertEqual(cmdline.split(), ['quiet', 'root=UUID=root-uuid', 'rootflags=subvol=@', 'resume=UUID=swap-uuid', 'rw'])
+            esp = root / 'boot/efi'
+            self.assertIn('timeout 5', (esp / 'loader/loader.conf').read_text())
+            entries = sorted(p.name for p in (esp / 'loader/entries').glob('*.conf'))
+            self.assertEqual(entries, ['0123456789abcdef0123456789abcdef-6.11.0-1-amd64.conf',
+                                       '0123456789abcdef0123456789abcdef-6.12.0-1-amd64.conf'])
+            entry = (esp / 'loader/entries' / entries[1]).read_text()
+            self.assertIn('title Edukasaun OS', entry)
+            self.assertIn('linux /0123456789abcdef0123456789abcdef/6.12.0-1-amd64/linux', entry)
+            self.assertIn('options quiet root=UUID=root-uuid rootflags=subvol=@', entry)
+            self.assertTrue((esp / '0123456789abcdef0123456789abcdef/6.12.0-1-amd64/initrd').exists())
+            for hook in ['etc/kernel/postinst.d/zz-corry-systemd-boot', 'etc/initramfs/post-update.d/zz-corry-systemd-boot',
+                         'etc/kernel/postrm.d/zz-corry-systemd-boot']:
+                self.assertTrue(os.access(root / hook, os.X_OK), hook)
+            # GRUB is gone: packages purged, files and its EFI directory and NVRAM entry removed.
+            purges = [c for c in calls if 'apt-get' in c and 'purge' in c]
+            self.assertEqual(len(purges), 1)
+            self.assertEqual(sorted(purges[0][purges[0].index('purge') + 1:]),
+                             ['grub-common', 'grub-efi-amd64', 'grub-pc', 'grub2-common', 'shim-signed'])
+            for gone in ['boot/grub', 'etc/default/grub', 'etc/grub.d', 'boot/efi/EFI/debian']:
+                self.assertFalse((root / gone).exists(), gone)
+            self.assertTrue((esp / 'EFI/systemd/systemd-bootx64.efi').exists())
+            self.assertTrue((esp / 'EFI/BOOT/BOOTX64.EFI').exists())  # systemd-boot's own copy stays
+            self.assertIn(['efibootmgr', '-b', '0001', '-B'], hosts)
+            self.assertFalse(any(h[:3] == ['efibootmgr', '-b', '0002'] for h in hosts))  # Windows stays
+            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'systemd-boot')
+            self.assertIn('GRUB removed', fake.values['corrySystem']['bootloader']['message'])
+
+    def test_systemd_boot_with_kernel_install(self):
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'systemd-boot', kernel_install=True)
+            adds = [c for c in calls if c[0] == 'kernel-install']
+            self.assertEqual([c[2] for c in adds], ['6.12.0-1-amd64', '6.11.0-1-amd64'])
+            self.assertEqual(adds[0][3:], ['/boot/vmlinuz-6.12.0-1-amd64', '/boot/initrd.img-6.12.0-1-amd64'])
+            self.assertFalse((root / 'etc/kernel/postinst.d/zz-corry-systemd-boot').exists())
+            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'systemd-boot')
+
+    def test_failed_alternative_keeps_grub_and_leaves_nothing_behind(self):
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'systemd-boot', bootctl_code=1)
+            # The second bootctl attempt (--no-variables) succeeds in this scenario; make it fail too.
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_root(temp)
+            values = {'rootMountPoint': temp, 'firmwareType': 'efi', 'efiSystemPartition': '/boot/efi',
+                      'partitions': self.partitions(), 'btrfsRootSubvolume': '@',
+                      'corrySystem': {'bootloader': {'id': 'systemd-boot', 'name': 'systemd-boot', 'packages': ['systemd-boot']}}}
+            calls = []
+
+            def call(args, stdin='', timeout=0):
+                calls.append(args)
+                return 1 if args[0] == 'bootctl' else 0
+            fake = fake_calamares(values, {}, call, lambda args, *rest: 'ii ' if args[0] == 'dpkg-query' else '')
+            module = load_module('corrybootloader', fake)
+            with patch.object(module, 'online', return_value=True), \
+                    patch.object(module, 'host', return_value=types.SimpleNamespace(returncode=0, stdout='')):
+                self.assertIsNone(module.run())
+            self.assertIn('bootctl could not install systemd-boot', fake.log.warnings[0])
+            self.assertIn('GRUB is installed instead', fake.log.warnings[0])
+            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'grub')
+            purges = [c for c in calls if 'apt-get' in c and 'purge' in c]
+            self.assertEqual(purges[0][-1], 'systemd-boot')  # the half-installed alternative, not GRUB
+            self.assertTrue((root / 'boot/grub/grub.cfg').exists())
+            self.assertTrue((root / 'boot/efi/EFI/debian/grubx64.efi').exists())
+
+    def test_refind_is_copied_to_both_efi_paths(self):
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'refind', fs='ext4')
+            self.assertEqual(fake.log.warnings, [])
+            esp = root / 'boot/efi'
+            for path in ['EFI/refind/refind_x64.efi', 'EFI/refind/refind.conf', 'EFI/refind/drivers_x64/ext4_x64.efi',
+                         'EFI/refind/icons/os_linux.png', 'EFI/BOOT/BOOTX64.EFI', 'EFI/BOOT/refind.conf',
+                         'EFI/BOOT/drivers_x64/ext4_x64.efi']:
+                self.assertTrue((esp / path).exists(), path)
+            self.assertFalse((esp / 'EFI/refind/drivers_x64/btrfs_x64.efi').exists())
+            self.assertEqual((esp / 'EFI/BOOT/BOOTX64.EFI').read_text(), 'x')  # rEFInd, not GRUB's copy
+            conf = (root / 'boot/refind_linux.conf').read_text().splitlines()
+            self.assertEqual(conf[0], '"Boot with standard options"  "quiet root=UUID=root-uuid resume=UUID=swap-uuid rw"')
+            self.assertIn('single', conf[1])
+            self.assertIn('ro root=UUID=root-uuid', conf[2])
+            self.assertTrue(any(h[:2] == ['efibootmgr', '-c'] and 'rEFInd Boot Manager' in h for h in hosts))
+            self.assertFalse((esp / 'EFI/debian').exists())
+            preseed = [c for c in calls if c[0] == 'sh' and 'debconf-set-selections' in c[-1]]
+            self.assertTrue(preseed)
+            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'refind')
+
+    def test_extlinux_on_bios(self):
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'extlinux', firmware='bios', fs='ext4')
+            self.assertEqual(fake.log.warnings, [])
+            conf = (root / 'boot/extlinux/extlinux.conf').read_text()
+            self.assertIn('LINUX /boot/vmlinuz-6.12.0-1-amd64', conf)
+            self.assertIn('INITRD /boot/initrd.img-6.12.0-1-amd64', conf)
+            self.assertIn('APPEND quiet root=UUID=root-uuid resume=UUID=swap-uuid rw', conf)
+            self.assertLess(conf.index('6.12.0'), conf.index('6.11.0'))
+            self.assertIn(['extlinux', '--install', '/boot/extlinux'], calls)
+            dd = [h for h in hosts if h[0] == 'dd'][0]
+            self.assertIn('of=/dev/sda', dd)
+            self.assertTrue(dd[1].endswith('usr/lib/EXTLINUX/mbr.bin'))
+            self.assertIn(['parted', '-s', '/dev/sda', 'set', '2', 'boot', 'on'], hosts)
+            self.assertTrue(os.access(root / 'etc/kernel/postinst.d/zz-corry-extlinux', os.X_OK))
+            self.assertFalse((root / 'boot/grub').exists())
+            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'extlinux')
+
+    def test_extlinux_with_separate_boot_uses_relative_paths(self):
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'extlinux', firmware='bios', fs='btrfs', separate_boot=True)
+            conf = (root / 'boot/extlinux/extlinux.conf').read_text()
+            self.assertIn('LINUX /vmlinuz-6.12.0-1-amd64', conf)
+            self.assertIn('rootflags=subvol=@', conf)
+            self.assertIn(['parted', '-s', '/dev/sda', 'set', '4', 'boot', 'on'], hosts)
+
+    def test_uboot_menu(self):
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'uboot', firmware='bios', fs='ext4')
+            defaults = (root / 'etc/default/u-boot').read_text()
+            self.assertIn('U_BOOT_ROOT="root=UUID=root-uuid"', defaults)
+            self.assertIn('U_BOOT_PARAMETERS="quiet resume=UUID=swap-uuid rw"', defaults)
+            self.assertIn(['u-boot-update'], calls)
+            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'uboot')
+
+    def test_helpers(self):
+        module = load_module('corrybootloader', fake_calamares())
+        self.assertEqual(module.disk_of('/dev/sda3'), ('/dev/sda', 3))
+        self.assertEqual(module.disk_of('/dev/nvme0n1p2'), ('/dev/nvme0n1', 2))
+        self.assertEqual(module.disk_of('/dev/mmcblk0p1'), ('/dev/mmcblk0', 1))
+        self.assertEqual(module.disk_of('/dev/vda'), (None, None))
+        versions = ['6.1.0-25-amd64', '6.12.0-1-amd64', '6.9.7+bpo-amd64']
+        self.assertEqual(sorted(versions, key=module.version_key), ['6.1.0-25-amd64', '6.9.7+bpo-amd64', '6.12.0-1-amd64'])
+
+    def test_grub_modules_step_aside_for_another_loader(self):
+        for name in ['grubcfg', 'bootloader']:
+            fake = fake_calamares({'corrySystem': {'bootloader': {'id': 'refind'}}, 'firmwareType': 'efi',
+                                   'rootMountPoint': '/nowhere'})
+            module = load_module(name, fake)
+            self.assertIsNone(module.run(), name)
+            self.assertEqual(fake.log.warnings, [], name)
+            # With GRUB chosen (or after a fallback) the modules work as before.
+            fake = fake_calamares({'corrySystem': {'bootloader': {'id': 'grub'}}, 'firmwareType': 'bios'})
+            self.assertFalse(load_module(name, fake).corry_other_bootloader(), name)
 
 
 class PreflightTests(unittest.TestCase):
