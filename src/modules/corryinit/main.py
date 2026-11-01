@@ -34,6 +34,9 @@ DEFAULT_ALLOWED = ["dbus-user-session", "sysv-rc", "libpam-elogind-compat"]
 DEFAULT_REMOVE = ["systemd-sysv", "libpam-systemd", "systemd", "libnss-systemd"]
 DEFAULT_PURGE = ["systemd-sysv", "libpam-systemd", "systemd", "libnss-systemd", "systemd-timesyncd",
                  "systemd-resolved"]
+# Packages that provide /sbin/init; an option's package list names one of them
+# (OpenRC runs on SysVinit's init in Debian).
+INIT_PROVIDERS = ("sysvinit-core", "runit-init", "finit-sysv")
 # Set only by test harnesses that run the job against a container's own root.
 ALLOW_LIVE_ROOT = False
 
@@ -104,6 +107,8 @@ def output(args, timeout=600):
 
 
 LAST_APT_OUTPUT = ""
+# Packages apt removed while installing the new init system (from its plan).
+REMOVED_BY_SWITCH = []
 
 
 def plan(action, packages):
@@ -181,25 +186,30 @@ def switch(root, configuration, packages, warn):
         warn("it would remove {} (they need systemd)".format(", ".join(blockers)))
         return False
     libcalamares.utils.debug("Corry: switching init; apt will remove {}".format(sorted(simulated[1]) or "nothing"))
+    REMOVED_BY_SWITCH[:] = sorted(simulated[1])
     if call(APT + ["install"] + request, 3600):
         warn("apt-get could not complete the installation")
         # Make sure the target still has a working init before continuing.
         call(APT + ["--fix-broken", "install"], 1800)
-        if init_owner() != packages[0] and not installed("systemd-sysv"):
+        if init_owner() not in INIT_PROVIDERS and not installed("systemd-sysv"):
             call(APT + ["install", "systemd-sysv"], 1800)
         return False
     libcalamares.job.setprogress(0.6)
     owner = init_owner()
-    if owner != packages[0]:
-        warn("/sbin/init still belongs to {} after installing {}".format(owner or "an unknown package", packages[0]))
+    expected = [p for p in packages if p in INIT_PROVIDERS]
+    if owner not in expected:
+        warn("/sbin/init still belongs to {} after installing {}".format(owner or "an unknown package",
+                                                                          ", ".join(expected or packages[:1])))
         return False
     return True
 
 
 def retire_systemd(configuration, packages, warn):
-    """Purge systemd's packages when that removes nothing else."""
+    """Purge what is left of systemd when that removes nothing else; returns the purged names."""
     allowed = set(configuration.get("allowedRemovals", DEFAULT_ALLOWED)) | set(packages)
     candidates = [p for p in configuration.get("purge", DEFAULT_PURGE) if installed(p)]
+    if not candidates:
+        return []  # The switch itself already removed systemd's packages.
     attempts = [candidates, [p for p in candidates if p != "systemd"], [p for p in candidates if p in ("systemd-sysv", "libpam-systemd")]]
     for attempt in attempts:
         if not attempt:
@@ -212,7 +222,7 @@ def retire_systemd(configuration, packages, warn):
             if kept:
                 warn("{} stay installed (inactive) because other packages need them".format(", ".join(kept)))
             return attempt
-    warn("systemd's packages stay installed (inactive) because other packages need them")
+    warn("{} stay installed (inactive) because other packages need them".format(", ".join(candidates)))
     return []
 
 
@@ -248,7 +258,8 @@ def run():
                     purged = retire_systemd(configuration, packages, warn)
             call(["apt-get", "clean"], 300)
         if done:
-            message = "{} is the init system; removed: {}.".format(name, ", ".join(purged) if purged else "nothing")
+            removed = REMOVED_BY_SWITCH + [p for p in purged if p not in REMOVED_BY_SWITCH]
+            message = "{} is the init system; removed: {}.".format(name, ", ".join(removed) if removed else "nothing")
             libcalamares.utils.debug("Corry: " + message)
             for problem in problems:
                 libcalamares.utils.warning("Corry: {}: {}.".format(name, problem))

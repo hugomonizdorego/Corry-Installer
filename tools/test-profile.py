@@ -116,10 +116,15 @@ class SequenceTests(unittest.TestCase):
                 self.assertFalse(option.get('default'), option['id'])
                 self.assertTrue(option['packages'], option['id'])
                 self.assertTrue(option['description'].isascii())
-        # The first package of an init option provides /sbin/init (verified after the switch).
-        self.assertEqual([o['packages'][0] for o in init[1:]], ['sysvinit-core', 'openrc', 'runit-init'])
+        # Each init option names exactly one provider of /sbin/init (verified after the
+        # switch; OpenRC runs on SysVinit's init), elogind for sessions, and the pieces
+        # systemd used to provide: a session bus, a syslog and cron.
         for option in init[1:]:
-            self.assertIn('elogind', option['packages'])
+            providers = [p for p in option['packages'] if p in ('sysvinit-core', 'runit-init')]
+            self.assertEqual(len(providers), 1, option['id'])
+            for needed in ['elogind', 'libpam-elogind', 'dbus-x11', 'rsyslog', 'cron']:
+                self.assertIn(needed, option['packages'], option['id'])
+        self.assertEqual(init[2]['packages'][0], 'openrc')
         by_id = {o['id']: o for o in loaders}
         self.assertEqual(by_id['systemd-boot']['firmware'], ['efi'])
         self.assertEqual(by_id['refind']['firmware'], ['efi'])
@@ -693,7 +698,8 @@ class InitTests(unittest.TestCase):
         self.assertEqual(sorted(purges[0][purges[0].index('purge') + 1:]), ['libpam-systemd', 'systemd', 'systemd-sysv'])
         self.assertEqual(fake.log.warnings, [])
         self.assertEqual(fake.values['corrySystem']['init']['installed'], 'sysvinit')
-        self.assertIn('removed: systemd-sysv, libpam-systemd, systemd', fake.values['corrySystem']['init']['message'])
+        message = fake.values['corrySystem']['init']['message']
+        self.assertTrue(all(name in message for name in ['removed:', 'systemd-sysv', 'libpam-systemd', 'systemd']), message)
 
     def test_systemd_stays_when_something_still_needs_it(self):
         # Purging systemd would also remove another package: keep it, drop only what is safe.
@@ -716,6 +722,9 @@ class InitTests(unittest.TestCase):
         result, calls, fake = self.setup(owner='systemd-sysv')
         self.assertIn('/sbin/init still belongs to systemd-sysv', fake.log.warnings[-1])
         self.assertFalse(any('purge' in c and '-s' not in c for c in calls))
+        # OpenRC's list starts with openrc, but /sbin/init belongs to sysvinit-core: that is right.
+        module = load_module('corryinit', fake_calamares())
+        self.assertEqual([p for p in ['openrc', 'sysvinit-core', 'elogind'] if p in module.INIT_PROVIDERS], ['sysvinit-core'])
 
     def test_openrc_replaces_sysv_rc_and_apt_refusals_are_explained(self):
         calls = []

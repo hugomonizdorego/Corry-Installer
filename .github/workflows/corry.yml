@@ -131,7 +131,8 @@ jobs:
             lightdm lightdm-gtk-greeter xfce4-session xfce4-panel xfdesktop4 thunar pipewire-pulse wireplumber gdm3
       - name: With GDM installed the switch is refused and systemd stays
         run: |
-          printf '%s' '{"corrySystem": {"init": {"id": "sysvinit", "name": "SysVinit", "packages": ["sysvinit-core", "elogind", "libpam-elogind", "orphan-sysvinit-scripts"]}}}' > storage.json
+          # The SysVinit option exactly as the System page offers it.
+          python3 -c "import json, yaml; s = yaml.safe_load(open('config/corry/modules/corrysystem.conf')); json.dump({'corrySystem': {'init': next(o for o in s['init'] if o['id'] == 'sysvinit')}}, open('storage.json', 'w'))"
           python3 tools/ci/run-job.py corryinit --root / --allow-live-root --storage storage.json | tee out.txt
           grep -q 'gdm3' out.txt
           test "$(readlink -f /sbin/init)" = /usr/lib/systemd/systemd
@@ -146,7 +147,7 @@ jobs:
           for p in systemd-sysv libpam-systemd systemd; do
             test "$(dpkg-query -W -f='${db:Status-Abbrev}' $p 2>/dev/null)" != "ii " || { echo "$p is still installed"; exit 1; }
           done
-          dpkg-query -W -f='${db:Status-Abbrev}' elogind libpam-elogind | grep -c '^ii' | grep -qx 2
+          dpkg-query -W -f='${db:Status-Abbrev}\n' elogind libpam-elogind | grep -c '^ii' | grep -qx 2
           python3 -c "import json; s = json.load(open('storage.json')); assert s['corrySystem']['init']['installed'] == 'sysvinit', s"
       - name: Boot loader packages offered by Corry
         run: |
