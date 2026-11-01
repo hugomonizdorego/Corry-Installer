@@ -57,3 +57,14 @@ CMakeLists.txt.user
 # Kate
 *.kate-swp
 tags
+
+# Debian package builds (dpkg-buildpackage in the source tree)
+/obj-*/
+/debian/.debhelper/
+/debian/*.debhelper.log
+/debian/*.substvars
+/debian/debhelper-build-stamp
+/debian/files
+/debian/tmp/
+/debian/corry-edukasaun/
+/debian/corry-debion/
