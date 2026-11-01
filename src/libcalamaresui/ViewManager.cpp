@@ -36,6 +36,7 @@
 #include <QFile>
 #include <QMessageBox>
 #include <QMetaObject>
+#include <QScrollArea>
 
 #define UPDATE_BUTTON_PROPERTY( name, value ) \
     do \
@@ -186,7 +187,7 @@ corryPage( ViewStep* step )
     page->setObjectName( QStringLiteral( "corryPage" ) );
     auto* pageLayout = new QVBoxLayout( page );
     pageLayout->setContentsMargins( 10, 0, 10, 0 );
-    auto* card = new CorryCard( page, QMargins( 30, 22, 30, 20 ) );
+    auto* card = new CorryCard( page, QMargins( 30, 18, 30, 16 ) );
     card->setObjectName( QStringLiteral( "corryPageCard" ) );
     pageLayout->addWidget( card );
     auto* layout = new QVBoxLayout( card );
@@ -200,9 +201,17 @@ corryPage( ViewStep* step )
         subtitle->setWordWrap( true );
         layout->addWidget( title );
         layout->addWidget( subtitle );
-        layout->addSpacing( 10 );
+        layout->addSpacing( 8 );
     }
-    layout->addWidget( step->widget(), 1 );
+    // A page taller than the card (the time-zone map on a small screen)
+    // scrolls instead of overlapping its own controls.
+    auto* scroll = new QScrollArea( card );
+    scroll->setObjectName( QStringLiteral( "corryPageScroll" ) );
+    scroll->setWidgetResizable( true );
+    scroll->setFrameShape( QFrame::NoFrame );
+    scroll->setHorizontalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
+    scroll->setWidget( step->widget() );
+    layout->addWidget( scroll, 1 );
     return page;
 }
 }  // namespace

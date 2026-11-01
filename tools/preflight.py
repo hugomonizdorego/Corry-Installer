@@ -122,13 +122,14 @@ def check(config, efi=None, arch=None):
 
 
 def main():
+    """Exit code 0 when every check passes, 2 when one fails (the reasons are printed)."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=pathlib.Path, default=pathlib.Path("/etc/calamares"))
     args = parser.parse_args()
     errors = check(args.config)
     if errors:
         print("Corry cannot start:\n" + "\n".join(errors), file=sys.stderr)
-        return 1
+        return 2
     print("Corry preflight passed.")
     return 0
 

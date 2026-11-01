@@ -36,8 +36,8 @@ sleep 18
 # The 1120x780 window is centered on the 1280x860 screen.
 shot() { xdotool mousemove 1270 850; sleep 0.5; import -window root -crop 1120x780+80+40 +repage "$out/$distro-$1.png"; }
 click() { xdotool mousemove "$1" "$2" click 1; sleep "${3:-1.5}"; }
-# The Next button answers its keyboard accelerator wherever it is.
-next() { xdotool key alt+n; sleep 2; }
+# The Next button is the gradient pill at the bottom right of the card.
+next() { click "${CORRY_NEXT_X:-978}" "${CORRY_NEXT_Y:-784}" 2; }
 shot 01-welcome; next
 sleep 2; shot 02-system-check; next
 shot 03-location; next
@@ -46,12 +46,14 @@ shot 04-keyboard; next
 click "${CORRY_NAME_X:-280}" "${CORRY_NAME_Y:-333}"; xdotool type --delay 20 'Hugo Moniz'
 click "${CORRY_PASS_X:-280}" "${CORRY_PASS_Y:-549}"; xdotool type a; click "${CORRY_PASS2_X:-523}" "${CORRY_PASS_Y:-549}"; xdotool type a
 shot 07-users
-click "${CORRY_ROOT_X:-168}" "${CORRY_ROOT_Y:-623}"; shot 08-users-admin-password; click "${CORRY_ROOT_X:-168}" "${CORRY_ROOT_Y:-623}"
-next; shot 09-system
-next; shot 10-summary
-next; shot 11-confirm
+click "${CORRY_ROOT_X:-160}" "${CORRY_ROOT_Y:-641}"; shot 08-users-admin-password; click "${CORRY_ROOT_X:-160}" "${CORRY_ROOT_Y:-641}"
+next; shot 09-system-init
+# Scroll the page down to the boot loader cards.
+xdotool mousemove 640 480 click 5 click 5 click 5 click 5 click 5 click 5; sleep 1; shot 10-system-boot-loader
+next; shot 11-summary
+next; shot 12-confirm
 # "Install now" is the default button of the confirmation dialog.
-xdotool key Return; sleep 6; shot 12-install
-sleep 10; shot 13-install-slides
-sleep 20; shot 14-finish
+xdotool key Return; sleep 6; shot 13-install
+sleep 10; shot 14-install-slides
+sleep 20; shot 15-finish
 echo "Screenshots written to $out"

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC0-1.0 -->
-# Corry Installer 0.2
+# Corry Installer 0.3
 
-> **Status: pre-release 0.2.** Corry has not yet been validated by full ISO
+> **Status: pre-release 0.3.** Corry has not yet been validated by full ISO
 > installations on real hardware. Do not use it on a computer with data you
 > cannot afford to lose.
 
@@ -13,52 +13,66 @@ Corry supports exactly those two bases.
 
 ## Screenshots, start to finish
 
-Captured from the **real Corry 0.2 build** running on a virtual display
+Captured from the **real Corry 0.3 build** running on a virtual display
 (`tools/screenshots/capture.sh`), except the two partition pages marked
 *preview*: a container has no disks to list, so those come from the design
 preview (`tools/preview.py`). The real capture run skips the partition step, so
-the header counts 8 steps there instead of 9.
+the header counts 9 steps there instead of 10.
 
 | | |
 | --- | --- |
 | ![1 Welcome](docs/screenshots/edukasaun-01-welcome.png) **1 · Welcome** with the product video | ![2 System check](docs/screenshots/edukasaun-02-system-check.png) **2 · System check** and internet recommendation |
-| ![3 Location](docs/screenshots/edukasaun-03-location.png) **3 · Location** | ![4 Keyboard](docs/screenshots/edukasaun-04-keyboard.png) **4 · Keyboard** |
+| ![3 Location](docs/screenshots/edukasaun-03-location.png) **3 · Location** (Asia/Dili preselected) | ![4 Keyboard](docs/screenshots/edukasaun-04-keyboard.png) **4 · Keyboard** |
 | ![5 Partitions](docs/screenshots/edukasaun-05-partitions-preview.png) **5 · Partitions** with *Open GParted* (preview) | ![6 Partition role](docs/screenshots/edukasaun-06-partition-role-preview.png) **EFI role: 300 MiB, boot/ESP flags set automatically** (preview) |
-| ![7 Users](docs/screenshots/edukasaun-07-users.png) **5 · Users**: same password for the administrator | ![8 Admin password](docs/screenshots/edukasaun-08-users-admin-password.png) **…or a different administrator password** |
-| ![9 Summary](docs/screenshots/edukasaun-09-summary.png) **6 · Summary** | ![10 Confirm](docs/screenshots/edukasaun-10-confirm.png) **Final confirmation** |
-| ![11 Install](docs/screenshots/edukasaun-11-install.png) **7 · Install**: slideshow with music | ![12 Slides](docs/screenshots/edukasaun-12-install-slides.png) **7 slides with recommendations** |
-| ![13 Finish](docs/screenshots/edukasaun-13-finish.png) **8 · Finish** | ![DebION](docs/screenshots/debion-12-install-slides.png) **DebION GNU/Linux** (same engine, own profile) |
+| ![7 Users](docs/screenshots/edukasaun-07-users.png) **6 · Users**: same password for the administrator | ![8 Admin password](docs/screenshots/edukasaun-08-users-admin-password.png) **…or a different administrator password** |
+| ![9 System](docs/screenshots/edukasaun-09-system-init.png) **7 · System components**: init system… | ![10 Boot loader](docs/screenshots/edukasaun-10-system-boot-loader.png) **…and boot loader** (offline here: only the defaults) |
+| ![11 Summary](docs/screenshots/edukasaun-11-summary.png) **8 · Summary** | ![12 Confirm](docs/screenshots/edukasaun-12-confirm.png) **Final confirmation** |
+| ![13 Install](docs/screenshots/edukasaun-13-install.png) **9 · Install**: slideshow with music | ![14 Slides](docs/screenshots/edukasaun-14-install-slides.png) **7 slides with recommendations** |
+| ![15 Finish](docs/screenshots/edukasaun-15-finish.png) **10 · Finish** | ![DebION](docs/screenshots/debion-14-install-slides.png) **DebION GNU/Linux** (same engine, own profile) |
 
 All DebION GNU/Linux screenshots are in [`docs/screenshots`](docs/screenshots).
 
 ## What Corry does
 
+- **A calm, light design:** every page is a white card on a light blue page, with
+  soft shadows, pill buttons, one gradient main action and a timeline of the steps
+  in the header. Each distribution brings its own accent color.
 - **Welcome** greets the user with a short, muted, looping product video (or an image)
   and offers the language. **System check** follows on its own page: disk space,
   memory, power, administrator rights, screen and **internet**, with a *Check again* button.
 - **Works with and without internet.** Without it, everything comes from the
   installation media. With it — which Corry recommends — Corry also repairs broken
-  packages and installs updates during installation, and can download the GRUB
-  package if the media lacks it. Network problems never fail the installation.
+  packages and installs updates during installation, can download the GRUB
+  package if the media lacks it, and offers the alternative init systems and boot
+  loaders. Network problems never fail the installation.
 - **Partitions:** erase disk (Btrfs by default, ext4 and XFS available), manual
   partitioning with Root/Home/EFI/Boot/Swap/Var/Tmp role buttons, or **Open GParted**;
   disks are re-read when GParted closes. Choosing **EFI** proposes **300 MiB** FAT32
   and sets the **boot/ESP flags automatically**; the size stays adjustable.
 - **Users:** one checkbox decides whether the administrator (root) account uses
   **the same password** as the user or **a different one**.
+- **System components:** the **init system** (systemd, Debian's default; or SysVinit,
+  OpenRC, runit) and the **boot loader** (GRUB 2, the default for BIOS and UEFI; or
+  systemd-boot, rEFInd, Syslinux/EXTLINUX, U-Boot's menu on ARM). The defaults work
+  offline. An alternative needs internet, is downloaded from the distribution's
+  repositories, and is offered only when it fits this computer: BIOS or UEFI,
+  architecture, the filesystem of `/boot`, Secure Boot (Debian signs only GRUB), a
+  GNOME desktop (needs systemd) and the init choice (Debian's systemd-boot needs
+  systemd). Once the alternative is installed and checked, **the replaced default is
+  removed from the new system** so that only one init system and one boot loader
+  remain. If anything goes wrong, the default stays and the log says why.
 - **Legacy BIOS and UEFI:** BIOS installs use an MBR disk and `grub-pc`; UEFI installs
   use GPT, a 300 MiB EFI partition and `grub-efi-amd64`. os-prober is enabled for dual boot.
 - **Installation:** a slideshow of at least five images (seven by default) with tips,
   and calm background music that can be muted.
 - **Leaves no trace.** After installation the new system contains no Corry or
   Calamares files, packages, launchers, menu entries or configuration.
-- **Replaces Calamares.** The `corry` package removes Debian's `calamares` and
-  `calamares-settings-debian` completely and becomes the default installer.
-- **Its own look.** Page headings, summary cards, a borderless installation page with
-  *Show details*, a finish page and a confirmation dialog designed for Corry.
+- **Replaces Calamares.** The packages remove Debian's `calamares` and
+  `calamares-settings-debian` completely and become the default installer.
 - **Easy branding:** one `distro.yaml` per distribution holds names, colors, links,
   video, music and slides. `tools/new-distro.py` creates a new profile in one command.
-- US English (`en_US.UTF-8`) by default; other languages can be chosen on the welcome page.
+- US English (`en_US.UTF-8`) by default; other languages can be chosen on the welcome
+  page. Time zone Asia/Dili (Timor-Leste) preselected.
 
 ## Install the Debian packages
 
@@ -66,8 +80,8 @@ There is one complete package per distribution:
 
 | Package | For | Built on |
 | --- | --- | --- |
-| `corry-edukasaun_0.2_amd64.deb` | Edukasaun OS | Debian stable |
-| `corry-debion_0.2_amd64.deb` | DebION GNU/Linux | Debian testing |
+| `corry-edukasaun_0.3_amd64.deb` | Edukasaun OS | Debian stable |
+| `corry-debion_0.3_amd64.deb` | DebION GNU/Linux | Debian testing |
 
 Download it from the GitHub release (or a CI run's *Artifacts*), then, in the live
 system or the ISO build chroot, with internet for the dependencies:
@@ -75,7 +89,7 @@ system or the ISO build chroot, with internet for the dependencies:
 ```bash
 sudo sh install-corry-debs.sh                    # installs the corry-*.deb next to it
 # the same by hand:
-sudo apt install ./corry-edukasaun_0.2_amd64.deb
+sudo apt install ./corry-edukasaun_0.3_amd64.deb
 ```
 
 **Do not use `dpkg -i`**: it does not download the dependencies and leaves the
@@ -97,6 +111,16 @@ session, and Debian's `install-debian` command all open Corry.
 `sudo apt purge corry-edukasaun` removes Corry completely, desktop shortcuts included. On the installed
 system, Corry's `corrycleanup` job purges these packages automatically.
 
+### If Corry does not start
+
+`corry-installer` exits with **2** when its preflight check fails (the dialog and
+the terminal say what is missing: a tool, the live image, a kernel, GRUB, the
+profile), **4** when the engine is not installed, **126/127** when administrator
+rights were refused, and otherwise with the engine's own code (**1**: the
+installation stopped with an error; see *Show details* or
+`~/.cache/calamares/session.log`). Details in
+[docs/CORRY-DEVELOPMENT.md](docs/CORRY-DEVELOPMENT.md#exit-codes-and-error-messages).
+
 ## Build from source
 
 Run inside a disposable Debian stable or testing machine:
@@ -117,16 +141,17 @@ The live image must contain what the installed system needs: a Debian kernel,
 firmware, desktop, login manager, initramfs-tools, `grub2-common`, `grub-pc-bin` and
 `grub-efi-amd64-bin` (ideally `grub-pc`/`grub-efi-amd64` in the ISO's package pool).
 
-- [Integration and testing guide](docs/CORRY-DEVELOPMENT.md)
-- [Branding guide: edit or add a distribution, media sizes](docs/BRANDING.md)
-- [Calamares review and recommendations](docs/RECOMMENDATIONS.md)
+- [Integration and testing guide, exit codes](docs/CORRY-DEVELOPMENT.md)
+- [Branding guide: edit or add a distribution, the look, media sizes](docs/BRANDING.md)
+- [Calamares and Debian review, recommendations](docs/RECOMMENDATIONS.md)
 - [Roadmap to 1.0](docs/ROADMAP.md)
 - [Changelog](CHANGELOG-CORRY.md)
 
 CI builds the packages on `debian:stable` and `debian:testing`, installs Debian's
 real `calamares` + `calamares-settings-debian`, installs Corry over them, checks that
 nothing of Calamares is left, starts the installed Corry on a virtual display,
-switches profile, purges Corry, and uploads the `.deb` files.
+purges Corry, uploads the `.deb` files, and runs the real init-system switch
+(`corryinit`) in both containers.
 
 ## Licensing
 

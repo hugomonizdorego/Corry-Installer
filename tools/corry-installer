@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
+# Corry Installer launcher.
+# Exit codes: 0 finished or closed by the user; 2 the preflight check failed
+# (the reasons are printed and shown in a dialog); 4 the installer engine is
+# not installed; 126/127 administrator rights were refused (pkexec); any other
+# code comes from the engine itself (1: it stopped with an error).
 set -euo pipefail
 # Corry speaks US English by default. Another language can still be chosen on
 # the welcome page, or set CORRY_LANG before starting the installer.
 language=${CORRY_LANG:-en_US.UTF-8}
 export LANG=$language LANGUAGE=${language%%.*}
 unset LC_ALL LC_MESSAGES
+if [[ ! -x /usr/bin/calamares ]]; then
+ echo 'Corry cannot start: the installer engine (/usr/bin/calamares) is not installed.' >&2
+ exit 4
+fi
 if ! details=$(/usr/bin/python3 /usr/lib/corry/preflight.py 2>&1); then
  printf '%s\n' "$details" >&2
  # Show failures from the desktop too, without a terminal requirement.
  if command -v zenity >/dev/null; then zenity --error --title='Corry Installer' --text="$details"; fi
- exit 1
+ exit 2
 fi
 # No -c: that option is for testing and makes Calamares look for its QML files
 # under /etc/calamares. Without it, /etc/calamares (settings, modules, branding)

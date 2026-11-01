@@ -52,8 +52,14 @@ class TemporaryFile:
         self.backup = self.path.with_name(self.path.name + ".corry-backup")
 
     def __enter__(self):
+        self.in_place = None
         if self.path.exists() or self.path.is_symlink():
-            self.path.rename(self.backup)
+            try:
+                self.path.rename(self.backup)
+            except OSError:
+                # A bind-mounted file (containers) cannot be renamed: keep its
+                # content and overwrite it in place instead.
+                self.in_place = self.path.read_bytes()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.source:
             shutil.copyfile(self.source, self.path)
@@ -63,6 +69,9 @@ class TemporaryFile:
         return self
 
     def __exit__(self, *exc):
+        if self.in_place is not None:
+            self.path.write_bytes(self.in_place)
+            return False
         if self.path.exists() or self.path.is_symlink():
             self.path.unlink()
         if self.backup.exists() or self.backup.is_symlink():
@@ -499,7 +508,7 @@ def run():
         arch = architecture()
         with TemporaryFile(Path(root) / "usr/sbin/policy-rc.d", POLICY):
             resolv = Path("/etc/resolv.conf")
-            keep_dns = TemporaryFile(Path(root) / "etc/resolv.conf", source=resolv) if resolv.exists() else None
+            keep_dns = TemporaryFile(Path(root) / "etc/resolv.conf", source=resolv) if resolv.exists() and root != "/" else None
             if keep_dns:
                 keep_dns.__enter__()
             try:

@@ -1022,6 +1022,23 @@ class PreflightTests(unittest.TestCase):
         spec.loader.exec_module(preflight)
         return preflight
 
+    def test_exit_codes_are_distinct_and_documented(self):
+        launcher = (ROOT / 'tools/corry-installer').read_text()
+        self.assertIn('exit 2', launcher)   # preflight failed
+        self.assertIn('exit 4', launcher)   # engine missing
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp)
+            (config / 'modules').mkdir()
+            (config / 'settings.conf').write_text('branding: corry\n')
+            (config / 'modules/unpackfs.conf').write_text('unpack:\n- source: /missing/corry.squashfs\n')
+            result = subprocess.run([sys.executable, str(ROOT / 'tools/preflight.py'), '--config', temp],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('Corry cannot start', result.stderr)
+        development = (ROOT / 'docs/CORRY-DEVELOPMENT.md').read_text()
+        for code in ['| 0 |', '| 1 |', '| 2 |', '| 4 |', '| 126, 127 |']:
+            self.assertIn(code, development)
+
     def test_preflight_missing_image(self):
         preflight = self.preflight()
         with tempfile.TemporaryDirectory() as temp:
