@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Maintainer tool: show how Debian stable and testing resolve the init-system and
-# boot-loader choices Corry offers, on a live-like system. Run by hand.
+# boot-loader choices Corry offers, on a live-like system. Nothing here fails the
+# run; read the log.
 name: Debian package probe
 on:
   workflow_dispatch:
@@ -22,49 +23,63 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
     steps:
       - name: Package metadata
+        shell: bash {0}
         run: |
           apt-get update >/dev/null
           apt-get install -y --no-install-recommends apt-utils ca-certificates debconf-utils >/dev/null
-          for p in sysvinit-core openrc runit-init elogind libelogind0 libpam-elogind systemd-boot systemd-boot-efi \
-                   systemd-boot-efi-amd64-signed refind extlinux syslinux-common u-boot-menu systemd-sysv libpam-systemd \
-                   orphan-sysvinit-scripts insserv startpar initscripts; do
+          for p in sysvinit-core openrc runit-init runit-services elogind libelogind0 libpam-elogind systemd-boot \
+                   systemd-boot-tools systemd-boot-efi systemd-boot-efi-amd64-signed refind extlinux syslinux-common \
+                   u-boot-menu gdm3 gnome-shell network-manager polkitd lightdm sddm xfce4-session; do
             echo "=== $p"
-            apt-cache show "$p" 2>&1 | grep -E '^(Package|Version|Architecture|Depends|Pre-Depends|Recommends|Conflicts|Breaks|Provides|Replaces):' | head -14
+            apt-cache show "$p" 2>&1 | grep -E '^(Package|Version|Depends|Pre-Depends|Recommends|Conflicts|Breaks|Provides|Replaces):' | head -12
           done
       - name: Live-like system with systemd, logind, NetworkManager, LightDM, Xfce session and GDM
+        shell: bash {0}
         run: |
           apt-get install -y --no-install-recommends systemd-sysv libpam-systemd dbus-user-session polkitd \
-            network-manager lightdm xfce4-session gdm3 >/dev/null 2>&1 || apt-get install -y --no-install-recommends systemd-sysv libpam-systemd dbus-user-session polkitd network-manager lightdm xfce4-session gdm3
+            network-manager lightdm xfce4-session gdm3 >/dev/null 2>&1 || echo "install failed"
           ls -l /sbin/init
+          apt-mark showmanual | tr '\n' ' '; echo
       - name: Simulate the init switches with GDM installed (expected to drag GNOME pieces)
+        shell: bash {0}
         run: |
-          for set in "sysvinit-core elogind libpam-elogind" "openrc elogind libpam-elogind" "runit-init elogind libpam-elogind"; do
-            echo "=== apt-get -s install $set"
-            apt-get -s install -y $set 2>&1 | grep -E '^(Remv|Inst|E:|The following|Conf)' | grep -vE '^Inst (lib|elogind|libpam-elogind|sysvinit|openrc|runit|init)' | head -40 || true
+          M="systemd-sysv- libpam-systemd- systemd- libnss-systemd-"
+          for set in "sysvinit-core elogind libpam-elogind orphan-sysvinit-scripts" \
+                     "openrc sysvinit-core elogind libpam-elogind orphan-sysvinit-scripts sysv-rc-" \
+                     "runit-init elogind libpam-elogind orphan-sysvinit-scripts"; do
+            echo "=== apt-get -s install $set $M"
+            apt-get -s install -y $set $M 2>&1 | grep -E '^(Remv|E:|   )' | head -60
           done
       - name: Without GDM, simulate, then really switch to sysvinit and look at what is left of systemd
+        shell: bash {0}
         run: |
-          apt-get purge -y gdm3 >/dev/null
-          echo "=== simulate sysvinit"; apt-get -s install -y sysvinit-core elogind libpam-elogind 2>&1 | grep -E '^(Remv|E:)' || true
-          echo "=== simulate openrc";   apt-get -s install -y openrc elogind libpam-elogind 2>&1 | grep -E '^(Remv|E:)' || true
-          echo "=== simulate runit";    apt-get -s install -y runit-init elogind libpam-elogind 2>&1 | grep -E '^(Remv|E:)' || true
+          apt-get purge -y gdm3 >/dev/null 2>&1
+          M="systemd-sysv- libpam-systemd- systemd- libnss-systemd-"
+          echo "=== simulate sysvinit"; apt-get -s install -y sysvinit-core elogind libpam-elogind orphan-sysvinit-scripts $M 2>&1 | grep -E '^(Remv|Inst|E:|   )' | grep -v '^Inst lib' | head -60
+          echo "=== simulate openrc";   apt-get -s install -y openrc sysvinit-core elogind libpam-elogind orphan-sysvinit-scripts sysv-rc- $M 2>&1 | grep -E '^(Remv|E:|   )' | head -40
+          echo "=== simulate runit";    apt-get -s install -y runit-init elogind libpam-elogind orphan-sysvinit-scripts $M 2>&1 | grep -E '^(Remv|E:|   )' | head -40
           echo "=== real switch to sysvinit"
-          apt-get install -y sysvinit-core elogind libpam-elogind 2>&1 | tail -15
-          ls -l /sbin/init; readlink -f /sbin/init
-          dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' systemd systemd-sysv libpam-systemd libpam-elogind elogind libelogind0 libsystemd0 systemd-timesyncd libnss-systemd 2>&1
-          echo "=== simulate purge systemd"; apt-get -s purge -y systemd 2>&1 | grep -E '^(Remv|E:)' || true
-          echo "=== simulate purge systemd libnss-systemd systemd-timesyncd"; apt-get -s purge -y systemd libnss-systemd systemd-timesyncd 2>&1 | grep -E '^(Remv|E:)' || true
-          echo "=== then openrc on top"; apt-get -s install -y openrc 2>&1 | grep -E '^(Remv|Inst|E:)' || true
-          echo "=== then runit-init instead"; apt-get -s install -y runit-init 2>&1 | grep -E '^(Remv|Inst|E:)' || true
+          apt-get install -y sysvinit-core elogind libpam-elogind orphan-sysvinit-scripts $M 2>&1 | tail -12
+          ls -l /sbin/init; readlink -f /sbin/init; dpkg-query -S "$(readlink -f /sbin/init)"
+          dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' systemd systemd-sysv libpam-systemd libpam-elogind elogind libelogind0 libsystemd0 systemd-timesyncd libnss-systemd sysv-rc initscripts 2>&1
+          echo "=== leftovers matching systemd"; dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' | grep -i systemd
+          echo "=== simulate purge of what is left"; apt-get -s purge -y $(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' | awk '$2 ~ /^ii/ && $1 ~ /^(systemd|libnss-systemd|libpam-systemd|systemd-)/ {print $1}') 2>&1 | grep -E '^(Remv|E:|   )' | head -30
+          echo "=== then openrc on top"; apt-get -s install -y openrc sysv-rc- 2>&1 | grep -E '^(Remv|Inst|E:|   )' | head -20
+          echo "=== then runit-init instead"; apt-get -s install -y runit-init 2>&1 | grep -E '^(Remv|Inst|E:|   )' | head -20
+          echo "=== openrc files"; apt-get download openrc >/dev/null 2>&1 && dpkg -c openrc_*.deb | grep -E 'README|inittab|postinst|/sbin/|rc-update' | head -20
+          echo "=== openrc README.Debian"; apt-get install -y --no-install-recommends openrc sysv-rc- >/dev/null 2>&1; sed -n 1,80p /usr/share/doc/openrc/README.Debian 2>/dev/null || echo missing
       - name: Boot loader packages and their hooks
+        shell: bash {0}
         run: |
           echo 'refind refind/install_to_esp boolean false' | debconf-set-selections
           apt-get install -y --no-install-recommends systemd-boot refind extlinux syslinux-common u-boot-menu 2>&1 | tail -5
-          for p in systemd-boot systemd-boot-efi refind extlinux syslinux-common u-boot-menu; do echo "=== files of $p"; dpkg -L $p | grep -E 'bin/|kernel|initramfs|default|postinst|README|\.efi$|mbr' | head -20; done
-          for f in /var/lib/dpkg/info/systemd-boot.postinst /var/lib/dpkg/info/refind.postinst /var/lib/dpkg/info/extlinux.postinst /var/lib/dpkg/info/u-boot-menu.postinst /etc/kernel/postinst.d/zz-systemd-boot /etc/initramfs/post-update.d/zz-systemd-boot /etc/default/extlinux /etc/default/u-boot /usr/share/doc/systemd-boot/README.Debian /usr/share/doc/extlinux/README.Debian; do
-            echo "=== $f"; test -e "$f" && sed -n 1,80p "$f" || echo missing; done
-          echo "=== extlinux-update / extlinux-install"; ls -l /usr/sbin/extlinux* /usr/bin/extlinux* 2>&1; sed -n 1,60p /usr/sbin/extlinux-update 2>/dev/null || true
+          echo "=== systemd-boot without systemd?"; apt-get -s install -y systemd-boot 2>&1 | grep -E '^(Remv|Inst|E:|   )' | head -20
+          for p in systemd-boot systemd-boot-tools systemd-boot-efi refind extlinux syslinux-common u-boot-menu; do echo "=== files of $p"; dpkg -L $p 2>/dev/null | grep -E 'bin/|kernel|initramfs|default|README|\.efi|mbr|drivers' | head -24; done
+          for f in /var/lib/dpkg/info/systemd-boot.postinst /var/lib/dpkg/info/refind.postinst /var/lib/dpkg/info/extlinux.postinst /var/lib/dpkg/info/u-boot-menu.postinst /etc/kernel/postinst.d/zz-systemd-boot /etc/initramfs/post-update.d/zz-systemd-boot /etc/default/extlinux /etc/default/u-boot /usr/share/doc/systemd-boot/README.Debian /usr/share/doc/extlinux/README.Debian /usr/share/doc/refind/README.Debian; do
+            echo "=== $f"; test -e "$f" && sed -n 1,60p "$f" || echo missing; done
+          echo "=== extlinux tools"; ls -l /usr/sbin/extlinux* /usr/bin/extlinux* /usr/lib/EXTLINUX /usr/lib/syslinux/mbr 2>&1 | head -20; sed -n 1,80p /usr/sbin/extlinux-update 2>/dev/null
           echo "=== kernel-install"; ls -l /usr/bin/kernel-install /usr/lib/kernel/install.d/ 2>&1
-          echo "=== bootctl"; bootctl --version 2>&1 | head -2
-          echo "=== refind-install"; grep -n "refind_linux.conf\|/proc/cmdline" /usr/sbin/refind-install | head -10
-          echo "=== u-boot-update"; sed -n 1,40p /usr/sbin/u-boot-update 2>/dev/null || true
+          echo "=== bootctl"; which bootctl; dpkg -S "$(which bootctl)" 2>&1
+          echo "=== refind-install"; grep -n "refind_linux.conf\|/proc/cmdline\|usedefault" /usr/sbin/refind-install | head -12
+          echo "=== u-boot-update"; sed -n 1,60p /usr/sbin/u-boot-update 2>/dev/null
+          echo "=== shim"; ls -l /usr/lib/shim 2>&1 | head
