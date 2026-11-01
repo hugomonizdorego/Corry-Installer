@@ -4,6 +4,10 @@
 name: Debian package probe
 on:
   workflow_dispatch:
+  # Also runs when this file itself changes on a development branch.
+  push:
+    branches: ['claude/**', 'codex/**']
+    paths: ['.github/workflows/debian-probe.yml']
 permissions:
   contents: read
 jobs:
