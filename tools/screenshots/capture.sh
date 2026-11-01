@@ -49,7 +49,7 @@ shot 07-users
 click "${CORRY_ROOT_X:-160}" "${CORRY_ROOT_Y:-641}"; shot 08-users-admin-password; click "${CORRY_ROOT_X:-160}" "${CORRY_ROOT_Y:-641}"
 next; shot 09-system-init
 # Scroll the page down to the boot loader cards.
-xdotool mousemove 640 480 click 5 click 5 click 5 click 5 click 5 click 5; sleep 1; shot 10-system-boot-loader
+xdotool mousemove 640 480 click 5 click 5 click 5 click 5 click 5; sleep 1; shot 10-system-boot-loader
 next; shot 11-summary
 next; shot 12-confirm
 # "Install now" is the default button of the confirmation dialog.

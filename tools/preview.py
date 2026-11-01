@@ -626,7 +626,13 @@ def main():
                     app.quit()
                 QTimer.singleShot(400, capture_slide)
             QTimer.singleShot(400, capture)
-        return app.exec()
+        code = app.exec()
+        if args.screenshots:
+            # The screenshots are written; skip Qt's teardown, which PySide6 6.12
+            # does not survive with a QQuickWidget on the offscreen platform.
+            sys.stdout.flush()
+            os._exit(code)
+        return code
 
 
 if __name__ == '__main__':

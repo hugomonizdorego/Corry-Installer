@@ -138,7 +138,9 @@ jobs:
           python3 -c "import json; s = json.load(open('storage.json')); assert s['corrySystem']['init']['installed'] == 'systemd', s"
       - name: Without GDM the switch succeeds, /sbin/init is SysVinit and systemd is purged
         run: |
-          apt-get purge -y gdm3 && apt-get autoremove --purge -y
+          # Take GNOME out completely (gnome-shell itself needs systemd, so the job would refuse again).
+          apt-get purge -y gdm3 gnome-shell gnome-shell-common gnome-session gnome-session-bin gnome-session-common \
+            gnome-settings-daemon gnome-settings-daemon-common mutter-common && apt-get autoremove --purge -y
           python3 tools/ci/run-job.py corryinit --root / --allow-live-root --storage storage.json | tee out.txt
           dpkg-query -S "$(readlink -f /sbin/init)" | grep -q '^sysvinit-core:'
           for p in systemd-sysv libpam-systemd systemd; do
