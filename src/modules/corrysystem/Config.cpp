@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  *
- *   Corry Installer: configuration and compatibility rules of the
- *   "System components" page.
+ *   Corry Installer: configuration and compatibility rules of the "Init
+ *   system" and "Boot loader" pages.
  */
 #include "Config.h"
 
@@ -13,7 +13,10 @@
 
 #include <QCoreApplication>
 #include <QFile>
+#include <QRegularExpression>
 #include <QSysInfo>
+
+#include <algorithm>
 
 namespace CorrySystem
 {
@@ -31,6 +34,22 @@ debianArchitecture( const QString& cpuArchitecture )
         { QStringLiteral( "power64" ), QStringLiteral( "ppc64el" ) },
     };
     return names.value( cpuArchitecture, cpuArchitecture );
+}
+
+QString
+debianBase( const QString& debianVersion )
+{
+    const QString version = debianVersion.trimmed();
+    // Testing and unstable say "forky/sid"; a release says "13.1".
+    if ( version.contains( QStringLiteral( "/sid" ) ) || version == QStringLiteral( "sid" ) )
+    {
+        return QStringLiteral( "testing" );
+    }
+    if ( QRegularExpression( QStringLiteral( "^[0-9]+(\\.[0-9]+)*$" ) ).match( version ).hasMatch() )
+    {
+        return QStringLiteral( "stable" );
+    }
+    return QString();
 }
 
 static bool
@@ -72,30 +91,48 @@ detectEnvironment( bool recheckNetwork )
     environment.secureBoot = environment.firmware == QStringLiteral( "efi" ) && secureBootEnabled();
     environment.gnome
         = QFile::exists( QStringLiteral( "/usr/sbin/gdm3" ) ) || QFile::exists( QStringLiteral( "/usr/bin/gnome-shell" ) );
-    // The partition page (before this one) describes the planned layout.
     if ( gs )
     {
+        // The partition page publishes its planned layout when it is left
+        // (corryPlannedPartitions); "partitions" itself is only written when
+        // the installation runs.
         QString root, boot;
-        bool rootCompressed = false;
-        const auto partitions = gs->value( QStringLiteral( "partitions" ) ).toList();
+        bool rootEncrypted = false, bootEncrypted = false;
+        auto partitions = gs->value( QStringLiteral( "corryPlannedPartitions" ) ).toList();
+        if ( partitions.isEmpty() )
+        {
+            partitions = gs->value( QStringLiteral( "partitions" ) ).toList();
+        }
         for ( const auto& item : partitions )
         {
             const auto partition = item.toMap();
             const auto mountPoint = partition.value( QStringLiteral( "mountPoint" ) ).toString();
             const auto fs = partition.value( QStringLiteral( "fs" ) ).toString().toLower();
+            const bool encrypted = partition.value( QStringLiteral( "encrypted" ) ).toBool()
+                || partition.contains( QStringLiteral( "luksMapperName" ) );
             if ( mountPoint == QStringLiteral( "/" ) )
             {
                 root = fs;
-                // Corry's Btrfs layout mounts with zstd compression (fstab.conf).
-                rootCompressed = fs == QStringLiteral( "btrfs" );
+                rootEncrypted = encrypted;
             }
             else if ( mountPoint == QStringLiteral( "/boot" ) )
             {
                 boot = fs;
+                bootEncrypted = encrypted;
             }
         }
         environment.bootFilesystem = boot.isEmpty() ? root : boot;
-        environment.bootCompressed = boot.isEmpty() && rootCompressed;
+        // Corry's Btrfs layout mounts with zstd compression (mount.conf).
+        environment.bootCompressed = environment.bootFilesystem == QStringLiteral( "btrfs" );
+        environment.bootEncrypted = boot.isEmpty() ? rootEncrypted : bootEncrypted;
+        // os-prober's findings from the partition page: other systems on this computer.
+        environment.otherSystems = !gs->value( QStringLiteral( "osproberLines" ) ).toStringList().isEmpty();
+        // The init page (before the boot loader page) wrote its choice.
+        const auto init = gs->value( QStringLiteral( "corrySystem" ) ).toMap().value( QStringLiteral( "init" ) ).toMap();
+        if ( !init.isEmpty() )
+        {
+            environment.systemdInit = init.value( QStringLiteral( "default" ), true ).toBool();
+        }
     }
     return environment;
 }
@@ -105,8 +142,14 @@ Config::Config( QObject* parent )
 {
 }
 
+QString
+Config::sectionKey() const
+{
+    return m_section == Section::Init ? QStringLiteral( "init" ) : QStringLiteral( "bootloader" );
+}
+
 QList< Option >
-Config::readOptions( const QVariantList& list )
+Config::readOptions( const QVariantList& list, const QString& base )
 {
     QList< Option > options;
     for ( const auto& item : list )
@@ -120,6 +163,7 @@ Config::readOptions( const QVariantList& list )
         option.firmware = Calamares::getStringList( map, "firmware" );
         option.architectures = Calamares::getStringList( map, "architectures" );
         option.filesystems = Calamares::getStringList( map, "filesystems" );
+        option.availableOn = Calamares::getStringList( map, "availableOn" );
         option.isDefault = Calamares::getBool( map, "default", false );
         option.secureBoot = Calamares::getBool( map, "secureBoot", option.isDefault );
         option.needsSystemd = Calamares::getBool( map, "needsSystemd", false );
@@ -128,7 +172,21 @@ Config::readOptions( const QVariantList& list )
             cWarning() << "corrysystem: option without id skipped";
             continue;
         }
+        // Only what this Debian base's archive really has. Without a known
+        // base, alternatives limited to some bases are not offered at all.
+        if ( !option.isDefault && !option.availableOn.isEmpty() && !option.availableOn.contains( base ) )
+        {
+            cDebug() << "corrysystem: option" << option.id << "is not available on Debian" << base;
+            continue;
+        }
         options.append( option );
+    }
+    // The first option is the default unless one is marked.
+    if ( !options.isEmpty()
+         && std::none_of( options.cbegin(), options.cend(), []( const Option& o ) { return o.isDefault; } ) )
+    {
+        options.first().isDefault = true;
+        options.first().secureBoot = true;
     }
     return options;
 }
@@ -136,42 +194,34 @@ Config::readOptions( const QVariantList& list )
 void
 Config::setConfigurationMap( const QVariantMap& configurationMap )
 {
-    m_init = readOptions( configurationMap.value( QStringLiteral( "init" ) ).toList() );
-    m_bootLoaders = readOptions( configurationMap.value( QStringLiteral( "bootloader" ) ).toList() );
-    // The first option is the default unless one is marked.
-    auto markDefault = []( QList< Option >& options )
+    const QString section = Calamares::getString( configurationMap, "section" );
+    m_section = section == QStringLiteral( "bootloader" )
+            || ( section.isEmpty() && !configurationMap.contains( QStringLiteral( "init" ) ) )
+        ? Section::BootLoader
+        : Section::Init;
+    m_base = Calamares::getString( configurationMap, "base" );
+    if ( m_base.isEmpty() )
     {
-        if ( options.isEmpty() )
+        QFile version( QStringLiteral( "/etc/debian_version" ) );
+        if ( version.open( QIODevice::ReadOnly ) )
         {
-            return;
-        }
-        if ( std::none_of( options.cbegin(), options.cend(), []( const Option& o ) { return o.isDefault; } ) )
-        {
-            options.first().isDefault = true;
-            options.first().secureBoot = true;
-        }
-    };
-    markDefault( m_init );
-    markDefault( m_bootLoaders );
-    for ( const auto& option : m_init )
-    {
-        if ( option.isDefault )
-        {
-            m_selectedInit = option.id;
+            m_base = debianBase( QString::fromUtf8( version.readAll() ) );
         }
     }
-    for ( const auto& option : m_bootLoaders )
+    m_options = readOptions( configurationMap.value( sectionKey() ).toList(), m_base );
+    m_selected.clear();
+    for ( const auto& option : std::as_const( m_options ) )
     {
         if ( option.isDefault )
         {
-            m_selectedBootLoader = option.id;
+            m_selected = option.id;
         }
     }
     emit changed();
 }
 
 void
-Config::evaluateInit( Option& option, const Environment& environment, const QString& systemdId )
+Config::evaluateInit( Option& option, const Environment& environment )
 {
     option.available = true;
     option.reason.clear();
@@ -190,7 +240,7 @@ Config::evaluateInit( Option& option, const Environment& environment, const QStr
                             .arg( environment.architecture );
         return;
     }
-    if ( environment.gnome && option.id != systemdId )
+    if ( environment.gnome )
     {
         option.available = false;
         option.reason = QCoreApplication::translate(
@@ -218,19 +268,21 @@ Config::evaluateBootLoader( Option& option, const Environment& environment )
                                ? QCoreApplication::translate( "Corry", "UEFI only" )
                                : QCoreApplication::translate( "Corry", "BIOS only" ) );
     }
-    if ( !option.architectures.isEmpty() )
-    {
-        option.badges << ( option.architectures.contains( QStringLiteral( "arm64" ) )
-                               ? QCoreApplication::translate( "Corry", "ARM" )
-                               : option.architectures.join( QStringLiteral( ", " ) ) );
-    }
     if ( option.isDefault )
     {
         option.badges.prepend( QCoreApplication::translate( "Corry", "Default" ) );
         option.badges << QCoreApplication::translate( "Corry", "Works offline" );
+        if ( option.secureBoot )
+        {
+            option.badges << QCoreApplication::translate( "Corry", "Secure Boot" );
+        }
         return;
     }
     option.badges << QCoreApplication::translate( "Corry", "Needs internet" );
+    if ( option.needsSystemd )
+    {
+        option.badges << QCoreApplication::translate( "Corry", "Needs systemd" );
+    }
     if ( !option.architectures.isEmpty() && !option.architectures.contains( environment.architecture ) )
     {
         option.available = false;
@@ -249,7 +301,30 @@ Config::evaluateBootLoader( Option& option, const Environment& environment )
     {
         option.available = false;
         option.reason = QCoreApplication::translate(
-            "Corry", "Secure Boot is on. Debian signs only GRUB; turn Secure Boot off in the firmware settings to use this loader." );
+            "Corry", "Secure Boot is on. Only GRUB is installed signed; turn Secure Boot off in the firmware settings to use this loader." );
+        return;
+    }
+    if ( option.needsSystemd && !environment.systemdInit )
+    {
+        // Debian's systemd-boot package depends on systemd, which elogind replaces.
+        option.available = false;
+        option.reason = QCoreApplication::translate(
+            "Corry", "Needs the systemd init system. Go back and choose systemd to use this loader." );
+        return;
+    }
+    if ( environment.bootEncrypted
+         && ( option.id == QStringLiteral( "extlinux" ) || option.id == QStringLiteral( "refind" ) ) )
+    {
+        option.available = false;
+        option.reason = QCoreApplication::translate(
+            "Corry", "Cannot read an encrypted /boot. Use GRUB, or add a separate unencrypted /boot." );
+        return;
+    }
+    if ( option.id == QStringLiteral( "extlinux" ) && environment.otherSystems )
+    {
+        option.available = false;
+        option.reason = QCoreApplication::translate(
+            "Corry", "Another operating system is on this computer. EXTLINUX would replace its boot code; GRUB keeps both bootable." );
         return;
     }
     if ( option.id == QStringLiteral( "extlinux" ) && environment.bootCompressed )
@@ -279,166 +354,94 @@ void
 Config::evaluate( const Environment& environment )
 {
     m_environment = environment;
-    QString systemdId;
-    for ( const auto& option : m_init )
+    ++m_evaluation;
+    for ( auto& option : m_options )
     {
-        if ( option.isDefault )
+        if ( m_section == Section::Init )
         {
-            systemdId = option.id;
+            evaluateInit( option, environment );
+        }
+        else
+        {
+            evaluateBootLoader( option, environment );
         }
     }
-    for ( auto& option : m_init )
+    // A choice that became impossible (went offline, changed the partitions or
+    // the init system) falls back to the default.
+    const Option* current = option( m_selected );
+    if ( !current || !current->available )
     {
-        evaluateInit( option, environment, systemdId );
-    }
-    for ( auto& option : m_bootLoaders )
-    {
-        evaluateBootLoader( option, environment );
-        if ( option.needsSystemd )
+        for ( const auto& o : std::as_const( m_options ) )
         {
-            option.badges << QCoreApplication::translate( "Corry", "Needs systemd" );
-            // Debian's systemd-boot package depends on systemd, which elogind replaces.
-            if ( option.available && !m_selectedInit.isEmpty() && m_selectedInit != systemdId )
+            if ( o.isDefault )
             {
-                option.available = false;
-                option.reason = QCoreApplication::translate(
-                    "Corry", "Needs the systemd init system; choose systemd above to use this loader." );
+                m_selected = o.id;
             }
         }
     }
-    // A choice that became impossible (went offline, changed the partitions) falls back to the default.
-    auto fallback = []( const QList< Option >& options, QString& selected )
-    {
-        const Option* current = nullptr;
-        for ( const auto& option : options )
-        {
-            if ( option.id == selected )
-            {
-                current = &option;
-            }
-        }
-        if ( !current || !current->available )
-        {
-            for ( const auto& option : options )
-            {
-                if ( option.isDefault )
-                {
-                    selected = option.id;
-                }
-            }
-        }
-    };
-    fallback( m_init, m_selectedInit );
-    fallback( m_bootLoaders, m_selectedBootLoader );
     emit changed();
 }
 
 const Option*
-Config::initSystem( const QString& id ) const
+Config::option( const QString& id ) const
 {
-    for ( const auto& option : m_init )
+    for ( const auto& o : m_options )
     {
-        if ( option.id == id )
+        if ( o.id == id )
         {
-            return &option;
-        }
-    }
-    return nullptr;
-}
-
-const Option*
-Config::bootLoader( const QString& id ) const
-{
-    for ( const auto& option : m_bootLoaders )
-    {
-        if ( option.id == id )
-        {
-            return &option;
+            return &o;
         }
     }
     return nullptr;
 }
 
 bool
-Config::selectInit( const QString& id )
+Config::select( const QString& id )
 {
-    const auto* option = initSystem( id );
-    if ( !option || !option->available )
+    const auto* o = option( id );
+    if ( !o || !o->available )
     {
         return false;
     }
-    if ( m_selectedInit == id )
+    if ( m_selected != id )
     {
-        return true;
+        m_selected = id;
+        emit changed();
     }
-    m_selectedInit = id;
-    // Boot loaders that need systemd follow the init choice.
-    const bool affectsLoaders = std::any_of(
-        m_bootLoaders.cbegin(), m_bootLoaders.cend(), []( const Option& o ) { return o.needsSystemd; } );
-    if ( affectsLoaders )
-    {
-        setProperty( "evaluation", property( "evaluation" ).toInt() + 1 );
-        evaluate( m_environment );
-        return true;
-    }
-    emit changed();
-    return true;
-}
-
-bool
-Config::selectBootLoader( const QString& id )
-{
-    const auto* option = bootLoader( id );
-    if ( !option || !option->available )
-    {
-        return false;
-    }
-    m_selectedBootLoader = id;
-    emit changed();
     return true;
 }
 
 QVariantMap
-Config::optionMap( const Option& option )
+Config::mergeInto( QVariantMap system ) const
 {
-    return { { QStringLiteral( "id" ), option.id },
-             { QStringLiteral( "name" ), option.name },
-             { QStringLiteral( "packages" ), option.packages },
-             { QStringLiteral( "default" ), option.isDefault } };
-}
-
-QVariantMap
-Config::toGlobalStorage() const
-{
-    QVariantMap map;
-    if ( const auto* init = initSystem( m_selectedInit ) )
+    if ( const auto* o = option( m_selected ) )
     {
-        map.insert( QStringLiteral( "init" ), optionMap( *init ) );
+        system.insert( sectionKey(),
+                       QVariantMap { { QStringLiteral( "id" ), o->id },
+                                     { QStringLiteral( "name" ), o->name },
+                                     { QStringLiteral( "packages" ), o->packages },
+                                     { QStringLiteral( "default" ), o->isDefault },
+                                     { QStringLiteral( "filesystems" ), o->filesystems } } );
     }
-    if ( const auto* loader = bootLoader( m_selectedBootLoader ) )
-    {
-        map.insert( QStringLiteral( "bootloader" ), optionMap( *loader ) );
-    }
-    map.insert( QStringLiteral( "online" ), m_environment.online );
-    return map;
+    system.insert( QStringLiteral( "online" ), m_environment.online );
+    system.insert( QStringLiteral( "base" ), m_base );
+    return system;
 }
 
 QString
 Config::prettyStatus() const
 {
-    auto describe = []( const Option* option )
+    const auto* o = option( m_selected );
+    if ( !o )
     {
-        if ( !option )
-        {
-            return QCoreApplication::translate( "Corry", "unchanged" );
-        }
-        return option->isDefault ? QCoreApplication::translate( "Corry", "%1 (default)" ).arg( option->name )
-                                 : QCoreApplication::translate( "Corry", "%1 (downloaded during installation; "
-                                                                         "the default is removed)" )
-                                       .arg( option->name );
-    };
-    return QCoreApplication::translate( "Corry", "Init system: %1<br/>Boot loader: %2" )
-        .arg( describe( initSystem( m_selectedInit ) ), describe( bootLoader( m_selectedBootLoader ) ) );
+        return QString();
+    }
+    const QString what = m_section == Section::Init ? QCoreApplication::translate( "Corry", "Init system" )
+                                                    : QCoreApplication::translate( "Corry", "Boot loader" );
+    return o->isDefault
+        ? QCoreApplication::translate( "Corry", "%1: %2 (default)" ).arg( what, o->name )
+        : QCoreApplication::translate( "Corry", "%1: %2 (downloaded during installation; the default is removed)" )
+              .arg( what, o->name );
 }
 
 }  // namespace CorrySystem

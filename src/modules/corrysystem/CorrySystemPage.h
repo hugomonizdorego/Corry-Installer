@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  *
- *   Corry Installer: the "System components" page.
+ *   Corry Installer: the "Init system" and "Boot loader" pages.
  */
 #ifndef CORRYSYSTEMPAGE_H
 #define CORRYSYSTEMPAGE_H
@@ -10,6 +10,7 @@
 #include <QFrame>
 #include <QWidget>
 
+class QGridLayout;
 class QLabel;
 class QRadioButton;
 class QVBoxLayout;
@@ -49,15 +50,13 @@ public slots:
     void rebuild();
 
 private:
-    void addSection( QVBoxLayout* into, const QString& title, const QString& text, const QList< Option >& options,
-                     const QString& selected, bool isInit );
-
     Config* m_config;
-    QWidget* m_content = nullptr;
-    QVBoxLayout* m_contentLayout = nullptr;
+    QVBoxLayout* m_layout = nullptr;
+    QGridLayout* m_grid = nullptr;
     QLabel* m_status = nullptr;
-    QList< OptionCard* > m_initCards;
-    QList< OptionCard* > m_bootCards;
+    QLabel* m_hint = nullptr;
+    QList< OptionCard* > m_cards;
+    int m_builtEvaluation = -1;
 };
 
 }  // namespace CorrySystem

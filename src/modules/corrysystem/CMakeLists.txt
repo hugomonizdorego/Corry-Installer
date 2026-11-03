@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Corry's "System components" page: choice of init system and boot loader.
+# Corry's "Init system" and "Boot loader" pages (two instances of this module).
 find_package(${qtname} ${QT_VERSION} CONFIG REQUIRED Core Gui Widgets Network)
 
 include_directories(${PROJECT_BINARY_DIR}/src/libcalamaresui)

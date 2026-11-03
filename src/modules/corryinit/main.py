@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Install the init system chosen on Corry's System page and retire systemd.
+"""Install the init system chosen on Corry's Init system page and retire systemd.
 
 The live image starts with systemd, Debian's default. When another init system
 was chosen, its packages are downloaded into the target. First apt's simulation
@@ -22,7 +22,7 @@ import libcalamares
 APT = ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-y", "--allow-remove-essential",
        "--no-install-recommends", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"]
 POLICY = "#!/bin/sh\n# Temporary, written by Corry during installation.\nexit 101\n"
-# Desktops that only work with systemd as PID 1; the System page hides the
+# Desktops that only work with systemd as PID 1; the Init system page disables the
 # alternatives when they are present, and the job checks again.
 NEEDS_SYSTEMD = ("gdm3", "gnome-shell", "gnome-session")
 # systemd's own packages: the switch may remove these and nothing else. Debian's
@@ -98,9 +98,13 @@ def call(args, timeout=1800):
 
 
 def output(args, timeout=600):
-    """stdout of a target command, or None when it fails."""
+    """stdout of a target command, or None when it fails.
+
+    check_target_env_output returns the output; target_env_process_output
+    would only return the exit code.
+    """
     try:
-        return libcalamares.utils.target_env_process_output(list(args), None, "", timeout)
+        return libcalamares.utils.check_target_env_output(list(args), "", timeout)
     except subprocess.CalledProcessError as exc:
         libcalamares.utils.debug("Corry: {} failed: {}".format(" ".join(args), exc.output))
         return None
@@ -115,7 +119,7 @@ def plan(action, packages):
     """What apt would install and remove, as (installed, removed) sets; None if apt refuses."""
     global LAST_APT_OUTPUT
     try:
-        text = libcalamares.utils.target_env_process_output(APT + ["-s", action] + list(packages), None, "", 600)
+        text = libcalamares.utils.check_target_env_output(APT + ["-s", action] + list(packages), "", 600)
     except subprocess.CalledProcessError as exc:
         LAST_APT_OUTPUT = str(exc.output or "")
         libcalamares.utils.debug("Corry: apt-get -s {} refused: {}".format(action, LAST_APT_OUTPUT))
@@ -187,12 +191,18 @@ def switch(root, configuration, packages, warn):
         return False
     libcalamares.utils.debug("Corry: switching init; apt will remove {}".format(sorted(simulated[1]) or "nothing"))
     REMOVED_BY_SWITCH[:] = sorted(simulated[1])
-    if call(APT + ["install"] + request, 3600):
+    # Download first: a slow line may be interrupted safely. The switch itself
+    # then runs without a time limit, so dpkg is never killed half-way.
+    if call(APT + ["--download-only", "install"] + list(packages), int(configuration.get("downloadTimeout", 7200))):
+        warn("the packages could not be downloaded")
+        return False
+    if call(APT + ["--no-download", "install"] + request, 0):
         warn("apt-get could not complete the installation")
         # Make sure the target still has a working init before continuing.
-        call(APT + ["--fix-broken", "install"], 1800)
+        call(["dpkg", "--configure", "-a"], 0)
+        call(APT + ["--fix-broken", "install"], 0)
         if init_owner() not in INIT_PROVIDERS and not installed("systemd-sysv"):
-            call(APT + ["install", "systemd-sysv"], 1800)
+            call(APT + ["install", "systemd-sysv"], 0)
         return False
     libcalamares.job.setprogress(0.6)
     owner = init_owner()
@@ -217,7 +227,7 @@ def retire_systemd(configuration, packages, warn):
         simulated = plan("purge", attempt)
         if simulated is None or any(not allowed_removal(p, allowed) for p in simulated[1]):
             continue
-        if call(APT + ["purge"] + attempt, 1800) == 0:
+        if call(APT + ["purge"] + attempt, 0) == 0:
             kept = [p for p in candidates if p not in attempt]
             if kept:
                 warn("{} stay installed (inactive) because other packages need them".format(", ".join(kept)))
@@ -245,18 +255,25 @@ def run():
     if not online(url):
         warn("the computer is offline and the packages cannot be downloaded")
     else:
-        with TemporaryFile(Path(root) / "usr/sbin/policy-rc.d", POLICY):
-            resolv = Path("/etc/resolv.conf")
-            if resolv.exists() and root != "/":
-                with TemporaryFile(Path(root) / "etc/resolv.conf", source=resolv):
+        done, purged = False, []
+        try:
+            with TemporaryFile(Path(root) / "usr/sbin/policy-rc.d", POLICY):
+                resolv = Path("/etc/resolv.conf")
+                if resolv.exists() and root != "/":
+                    with TemporaryFile(Path(root) / "etc/resolv.conf", source=resolv):
+                        done = switch(root, configuration, packages, warn)
+                        if done:
+                            purged = retire_systemd(configuration, packages, warn)
+                else:
                     done = switch(root, configuration, packages, warn)
                     if done:
                         purged = retire_systemd(configuration, packages, warn)
-            else:
-                done = switch(root, configuration, packages, warn)
-                if done:
-                    purged = retire_systemd(configuration, packages, warn)
-            call(["apt-get", "clean"], 300)
+                call(["apt-get", "clean"], 300)
+        except Exception as exc:  # Never stop the installation: the image's systemd is the fallback.
+            warn("unexpected {}: {}".format(type(exc).__name__, exc))
+            done = init_owner() in [p for p in packages if p in INIT_PROVIDERS]
+            if not done and not installed("systemd-sysv"):
+                call(APT + ["install", "systemd-sysv"], 0)
         if done:
             removed = REMOVED_BY_SWITCH + [p for p in purged if p not in REMOVED_BY_SWITCH]
             message = "{} is the init system; removed: {}.".format(name, ", ".join(removed) if removed else "nothing")

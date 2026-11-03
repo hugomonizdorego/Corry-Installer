@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: CC0-1.0
+# Corry theme "soft-blue": a calm light-blue, soft (neumorphic) look. Raised
+# cards with a light edge on the top left and a blue shadow on the bottom
+# right, pill buttons, and a timeline of the steps across the top.
+# Used by DebION GNU/Linux. A distribution's distro.yaml selects a theme with
+# "theme:" and may override any color below in its own "colors:" block.
+name: Soft blue
+# Where the steps are shown: top (timeline header) or left (sidebar).
+layout: top
+# Font families, first available wins. Missing fonts fall back to Noto Sans.
+font: [Inter, Noto Sans, DejaVu Sans]
+# Corner radius of the page card in pixels; buttons and panels follow it.
+radius: 24
+colors:
+  page: '#d4e5f7'          # window background
+  surface: '#e9f2fc'       # page card
+  surface-alt: '#dce9f8'   # panels and fields inside the card
+  border: '#c3d7ee'
+  text: '#2c4a70'
+  text-muted: '#6080a8'
+  text-faint: '#93add0'
+  accent: '#4a8ddc'        # main buttons, progress, current step
+  accent-light: '#7fb3ee'  # light end of gradients
+  accent-dark: '#2f6fbd'   # hover and pressed
+  on-accent: '#ffffff'     # text on the accent
+  tint: '#cfe2f8'          # selected items
+  shadow: '#9fbbdc'        # soft shadow under cards
+  highlight: '#ffffff'     # light edge (neumorphic); transparent for none
+  nav: '#d4e5f7'           # header or sidebar background
+  nav-text: '#2c4a70'
+  nav-active: '#e9f2fc'    # current step in a sidebar
+  hero: '#e9f2fc'          # welcome page card
+  tone-1: '#dce9f8'        # summary sections, in turn
+  tone-2: '#d7e6f8'
+  tone-3: '#e1edf9'
+  tone-4: '#d9e8f8'
+  mark-1: '#4a8ddc'        # step icon tiles, in turn
+  mark-2: '#5ea2e8'
+  mark-3: '#3c7fcf'
+  mark-4: '#6fb0ec'
+  warning-bg: '#fdf1d8'
+  warning-text: '#8a5a00'
+  danger-bg: '#fbe1e1'
+  danger-text: '#9b2c2c'
+  success: '#3c9a6b'

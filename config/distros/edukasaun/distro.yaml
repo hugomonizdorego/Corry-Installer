@@ -10,10 +10,16 @@ bootloader-name: Edukasaun OS
 # Product version. Empty: taken from VERSION_ID in the live system's /etc/os-release.
 version: ''
 
-# Accent (buttons, progress, highlights) and tint (soft backgrounds), as #rrggbb.
-colors:
-  accent: '#246452'
-  tint: '#e9f4ec'
+# The Debian base: stable or testing. Corry offers only the init systems and
+# boot loaders that this base's archive really has.
+debian: stable
+
+# The look: a theme from config/themes/ (soft-blue, warm-pastel). Any theme
+# color can be overridden here, for example:
+#   colors:
+#     accent: '#0b6bcb'
+theme: warm-pastel
+colors: {}
 
 # Square logo (SVG or PNG). Empty: the Corry mark in the accent color.
 logo: ''
@@ -29,11 +35,9 @@ links:
 # Any HTTP(S) address of the distribution's package mirror works.
 internet-check-url: http://deb.debian.org/debian/
 
-# Welcome page: a muted, looping video (WebM or MP4) with an image as poster
-# and fallback. Leave video empty to show only the image.
+# Welcome page picture (SVG, PNG or JPEG, ideally 16:9, for example 1600x900).
 welcome:
   image: slides/welcome.svg
-  video: media/welcome.webm
 
 # Background music during installation (Ogg, MP3 or WAV); the user can mute it.
 # Leave file empty for silence. Volume is 0.0 to 1.0.

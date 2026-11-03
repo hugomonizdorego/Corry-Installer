@@ -7,3 +7,6 @@ usr/lib/*/libcalamaresui.so
 usr/share/applications/calamares.desktop
 usr/share/icons/hicolor/scalable/apps/calamares.svg
 usr/share/calamares/branding/default
+# The raw Corry branding holds theme tokens; each package ships the themed
+# copy that tools/install-profile.sh writes to /etc/calamares/branding/corry.
+usr/share/calamares/branding/corry

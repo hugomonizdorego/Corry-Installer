@@ -111,6 +111,174 @@ jobs:
           retention-days: 30
 
   init-switch:
+    # The corryinit job, for real, on a live-like Debian system, for every init
+    # system on both bases: it must refuse while GDM is installed, and otherwise
+    # switch, verify /sbin/init, purge systemd and keep the desktop. Every
+    # package the Init system and Boot loader pages offer must be in the archive.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: [stable, testing]
+        init: [sysvinit, openrc, runit]
+    container: debian:${{ matrix.debian }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - run: apt-get update && apt-get install -y git ca-certificates python3 python3-yaml
+      - uses: actions/checkout@v4
+      - name: Every offered package exists in Debian ${{ matrix.debian }}
+        run: python3 tools/ci/check-availability.py ${{ matrix.debian }}
+      - name: Live-like system with systemd, logind, NetworkManager, LightDM, an Xfce desktop, PipeWire and GDM
+        run: |
+          apt-get install -y --no-install-recommends systemd-sysv libpam-systemd dbus-user-session polkitd network-manager \
+            lightdm lightdm-gtk-greeter xfce4-session xfce4-panel xfdesktop4 thunar pipewire-pulse wireplumber gdm3
+      - name: The ${{ matrix.init }} option exactly as the Init system page offers it
+        run: |
+          python3 - ${{ matrix.init }} ${{ matrix.debian }} <<'EOF'
+          import json, sys, yaml
+          page = yaml.safe_load(open('config/corry/modules/corrysystem-init.conf'))
+          option = next(o for o in page['init'] if o['id'] == sys.argv[1])
+          assert sys.argv[2] in option['availableOn'], option
+          json.dump({'corrySystem': {'init': option}}, open('storage.json', 'w'))
+          EOF
+      - name: With GDM installed the switch is refused and systemd stays
+        run: |
+          python3 tools/ci/run-job.py corryinit --root / --allow-live-root --storage storage.json | tee out.txt
+          grep -q 'gdm3' out.txt
+          test "$(readlink -f /sbin/init)" = /usr/lib/systemd/systemd
+          python3 -c "import json; s = json.load(open('storage.json')); assert s['corrySystem']['init']['installed'] == 'systemd', s"
+      - name: Without GDM the switch succeeds, /sbin/init belongs to ${{ matrix.init }} and systemd is purged
+        run: |
+          # Take GNOME out completely (gnome-shell itself needs systemd, so the job would refuse again).
+          apt-get purge -y gdm3 gnome-shell gnome-shell-common gnome-session gnome-session-bin gnome-session-common \
+            gnome-settings-daemon gnome-settings-daemon-common mutter-common && apt-get autoremove --purge -y
+          python3 tools/ci/run-job.py corryinit --root / --allow-live-root --storage storage.json | tee out.txt
+          packages=$(python3 -c "import json; print(' '.join(json.load(open('storage.json'))['corrySystem']['init']['packages']))")
+          provider=sysvinit-core
+          case " $packages " in *" runit-init "*) provider=runit-init;; esac
+          dpkg-query -S "$(readlink -f /sbin/init)" | grep -q "^$provider:"
+          for p in $packages; do
+            test "$(dpkg-query -W -f='${db:Status-Abbrev}' $p 2>/dev/null)" = "ii " || { echo "$p is not installed"; exit 1; }
+          done
+          for p in systemd-sysv libpam-systemd systemd; do
+            test "$(dpkg-query -W -f='${db:Status-Abbrev}' $p 2>/dev/null)" != "ii " || { echo "$p is still installed"; exit 1; }
+          done
+          # The desktop is still complete.
+          for p in lightdm lightdm-gtk-greeter xfce4-session xfce4-panel thunar network-manager polkitd pipewire-pulse; do
+            test "$(dpkg-query -W -f='${db:Status-Abbrev}' $p 2>/dev/null)" = "ii " || { echo "$p was removed"; exit 1; }
+          done
+          python3 -c "import json; s = json.load(open('storage.json')); assert s['corrySystem']['init']['installed'] == '${{ matrix.init }}', s"
+          dpkg --audit
+
+  release:
+        description: Publish a GitHub release v<VERSION> with both packages
+        type: boolean
+        default: false
+  push:
+    branches: ['claude/**', 'codex/**']
+    tags: ['v*']
+    paths: ['src/**', 'config/**', 'tools/**', 'debian/**', 'settings.conf', 'VERSION', 'CMakeLists.txt', '.github/workflows/corry.yml']
+  pull_request:
+    paths: ['src/**', 'config/**', 'tools/**', 'debian/**', 'settings.conf', 'VERSION', 'CMakeLists.txt', '.github/workflows/corry.yml']
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Edukasaun OS is based on Debian stable, DebION GNU/Linux on Debian testing.
+          - debian: stable
+            distro: edukasaun
+            product: Edukasaun OS
+          - debian: testing
+            distro: debion
+            product: DebION GNU/Linux
+    container: debian:${{ matrix.debian }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - run: apt-get update && apt-get install -y git ca-certificates
+      - uses: actions/checkout@v4
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Install build dependencies from debian/control
+        run: apt-get install -y dpkg-dev debhelper && apt-get build-dep -y ./
+      - name: Build the Debian packages (runs the native and profile tests)
+        run: dpkg-buildpackage -us -uc -b
+      - name: Collect the ${{ matrix.product }} package with the install script
+        run: |
+          version=$(cat VERSION)
+          mkdir -p dist
+          cp ../corry-${{ matrix.distro }}_*.deb dist/
+          ! ls ../*dbgsym* 2>/dev/null
+          cp tools/install-corry-debs.sh dist/
+          printf '%s\n' "Corry $version for ${{ matrix.product }} (Debian ${{ matrix.debian }})" '' \
+            'Install (needs internet for the dependencies):' \
+            '  sudo sh install-corry-debs.sh' \
+            'Do not use "dpkg -i": it does not install the dependencies.' \
+            'An "Install ${{ matrix.product }}" shortcut appears on every desktop.' > dist/INSTALL.txt
+          cd dist && sha256sum *.deb > SHA256SUMS
+      - name: Prepare a live-like system with Debian's Calamares and a desktop user
+        run: |
+          apt-get install -y calamares calamares-settings-debian xdg-user-dirs
+          useradd -m -s /bin/bash live
+      - name: Install Corry with the script; Calamares must be removed
+        run: sh dist/install-corry-debs.sh
+      - name: Verify the installation
+        run: |
+          set -x
+          for package in calamares calamares-settings-debian; do
+            status=$(dpkg-query -W -f='${db:Status-Abbrev}' "$package" 2>/dev/null || true)
+            test -z "$status" || test "$status" = "un " || { echo "$package is still $status"; exit 1; }
+          done
+          ! ls /etc/xdg/autostart/calamares-desktop-icon.desktop /usr/share/applications/install-debian.desktop 2>/dev/null
+          test "$(readlink -f /usr/bin/install-debian)" = /usr/bin/corry-installer
+          dpkg-query -S /etc/calamares/settings.conf | grep -q '^corry-${{ matrix.distro }}:'
+          grep -q 'productName: ${{ matrix.product }}' /etc/calamares/branding/corry/branding.desc
+          dpkg --verify corry-${{ matrix.distro }}
+          # The desktop shortcut is there for the existing user, executable and owned by them.
+          shortcut=/home/live/Desktop/corry-installer.desktop
+          test -x "$shortcut" && test "$(stat -c %U "$shortcut")" = live
+          grep -q 'Name=Install ${{ matrix.product }}' "$shortcut"
+          test -f /usr/share/icons/hicolor/scalable/apps/corry-installer.svg
+          # The preflight check runs and reports the missing live image (no ISO here).
+          ! /usr/lib/corry/preflight.py --config /etc/calamares 2> preflight.txt
+          grep -q 'Live system image not found' preflight.txt
+      - name: Start the installed Corry on a virtual display
+        run: |
+          apt-get install -y xvfb xauth
+          # From an empty directory, so nothing from the source tree is used.
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          LANG=en_US.UTF-8 timeout 40 xvfb-run -a -s '-screen 0 1280x860x24' calamares -d > calamares.log 2>&1 || true
+          grep -E 'Using Calamares|Loaded branding' calamares.log
+          ! grep -E 'FATAL|Cowardly refusing|QML component not ready' calamares.log
+          grep -q 'Using Calamares settings file at "/etc/calamares/settings.conf"' calamares.log
+          grep -q 'Using Calamares QML directory "/usr/share/calamares/qml"' calamares.log
+          grep -q 'Using Calamares branding file at "/etc/calamares/branding/corry/branding.desc"' calamares.log
+          grep -q 'Loaded branding component "corry"' calamares.log
+      - name: Remove Corry completely, shortcut included
+        run: |
+          apt-get purge -y corry-${{ matrix.distro }}
+          ! ls -d /etc/calamares /usr/lib/corry /usr/share/calamares /etc/apt/apt.conf.d/80corry-remove-calamares \
+            /home/live/Desktop/corry-installer.desktop 2>/dev/null
+      - name: Repair a failed "dpkg -i" with the install script
+        run: |
+          # Remove one dependency, then do what users did: dpkg -i fails half-way.
+          apt-get remove -y zenity
+          dpkg -i dist/corry-${{ matrix.distro }}_*.deb || true
+          sh dist/install-corry-debs.sh
+          dpkg-query -W -f='${db:Status-Abbrev}' corry-${{ matrix.distro }} | grep -qx 'ii '
+          apt-get purge -y corry-${{ matrix.distro }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: corry-${{ matrix.distro }}-debian-${{ matrix.debian }}-amd64
+          path: dist/*
+          retention-days: 30
+
+  init-switch:
     # The corryinit job, for real, on a live-like Debian system: it must refuse
     # while GDM is installed, and must switch to SysVinit and purge systemd
     # otherwise. The boot loader packages Corry offers are checked to exist.

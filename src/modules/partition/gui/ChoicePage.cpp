@@ -140,8 +140,16 @@ ChoicePage::ChoicePage( Config* config, QWidget* parent )
                          gpartedButton->setEnabled( true );
                          if ( m_core )
                          {
+                             // Re-read every disk in place (as upstream's own rescans do):
+                             // the device and partition models the page shows stay valid,
+                             // and the root mount point is recomputed.
                              ScanningDialog::run(
-                                 QtConcurrent::run( [ this ] { m_core->revert(); } ),
+                                 QtConcurrent::run(
+                                     [ this ]
+                                     {
+                                         QMutexLocker locker( &m_coreMutex );
+                                         m_core->revertAllDevices();
+                                     } ),
                                  [ this ] { applyDeviceChoice(); },
                                  this );
                          }

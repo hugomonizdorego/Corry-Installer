@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Generate Corry's default CC0 media for one distribution.
 
-Writes slide illustrations (SVG), a short looping welcome video (WebM/VP9)
-and a calm background soundtrack (Ogg Vorbis) into config/distros/<id>/.
-Distributions can replace any of these with their own photos, video or music;
-see docs/BRANDING.md. Requires PySide6 and ffmpeg.
+Writes slide illustrations (SVG) in the colors of the distribution's theme
+(each slide takes the theme's next tile color, so warm-pastel slides are teal,
+coral, amber and blue in turn) and a calm background soundtrack (Ogg Vorbis)
+into config/distros/<id>/. Distributions can replace any of these with their
+own photos or music; see docs/BRANDING.md. The soundtrack needs ffmpeg.
 
     python3 tools/generate-default-media.py edukasaun
 """
 import argparse
+import importlib.util
 import math
 import random
 import struct
@@ -41,7 +43,7 @@ def check(x, y, size, color, width):
             f'stroke="{color}" stroke-width="{width}" stroke-linecap="round" stroke-linejoin="round"/>')
 
 
-def welcome(a, t, phase=0.0):
+def welcome(a, t, phase=0.0):  # phase: kept for drawing variations
     pulse = 1 + 0.04 * math.sin(phase * 2)
     size = 72 * pulse
     return frame(a, t,
@@ -116,28 +118,6 @@ ART = {'welcome.svg': welcome, 'debian.svg': debian, 'learn.svg': learn, 'update
        'secure.svg': shield, 'community.svg': community, 'ready.svg': ready}
 
 
-def render_video(accent, tint, target, seconds=8, fps=24):
-    from PySide6.QtCore import QByteArray, QRectF
-    from PySide6.QtGui import QGuiApplication, QImage, QPainter, QColor
-    from PySide6.QtSvg import QSvgRenderer
-    app = QGuiApplication.instance() or QGuiApplication(['corry-media'])
-    with tempfile.TemporaryDirectory() as temp:
-        count = seconds * fps
-        for n in range(count):
-            # A full sine period over the clip, so the video loops seamlessly.
-            svg = welcome(accent, tint, 2 * math.pi * n / count)
-            image = QImage(1280, 720, QImage.Format_RGB32)
-            image.fill(QColor('#ffffff'))
-            painter = QPainter(image)
-            QSvgRenderer(QByteArray(svg.encode())).render(painter, QRectF(0, 0, 1280, 720))
-            painter.end()
-            image.save(f'{temp}/{n:04d}.png')
-        subprocess.run(['ffmpeg', '-loglevel', 'error', '-y', '-framerate', str(fps), '-i', f'{temp}/%04d.png',
-                        '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '40', '-row-mt', '1', '-pix_fmt', 'yuv420p',
-                        '-an', str(target)], check=True)
-    del app
-
-
 def render_sound(target, seconds=48, rate=22050, seed=7):
     """A slow, quiet pad: four chords, soft attack and release, seamless loop."""
     random.seed(seed)
@@ -167,17 +147,21 @@ def render_sound(target, seconds=48, rate=22050, seed=7):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('distro')
-    parser.add_argument('--no-video', action='store_true')
     parser.add_argument('--no-sound', action='store_true')
     args = parser.parse_args()
     folder = ROOT / 'config/distros' / args.distro
-    colors = yaml.safe_load((folder / 'distro.yaml').read_text())['colors']
+    spec = importlib.util.spec_from_file_location('corry_branding', ROOT / 'tools/corry-branding.py')
+    branding = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(branding)
+    raw = yaml.safe_load((folder / 'distro.yaml').read_text())
+    theme = branding.load_theme(raw.get('theme') or branding.DEFAULT_THEME)
+    colors = dict(theme['colors'])
+    colors.update(raw.get('colors') or {})
     (folder / 'slides').mkdir(exist_ok=True)
     (folder / 'media').mkdir(exist_ok=True)
-    for name, draw in ART.items():
-        (folder / 'slides' / name).write_text(draw(colors['accent'], colors['tint']))
-    if not args.no_video:
-        render_video(colors['accent'], colors['tint'], folder / 'media/welcome.webm')
+    for index, (name, draw) in enumerate(ART.items()):
+        mark, tone = colors[f'mark-{index % 4 + 1}'], colors[f'tone-{index % 4 + 1}']
+        (folder / 'slides' / name).write_text(draw(mark, tone))
     if not args.no_sound:
         render_sound(folder / 'media/ambient.ogg')
     print('Media written to', folder)

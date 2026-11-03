@@ -39,8 +39,13 @@ paintCorryRequirement( QPainter* painter, const QStyleOptionViewItem& option, co
     const auto fontsize = item_fontsize();
     const bool satisfied = index.data( Calamares::RequirementsModel::Satisfied ).toBool();
     const bool mandatory = index.data( Calamares::RequirementsModel::Mandatory ).toBool();
-    const QColor background = satisfied ? QColor( 0xf5, 0xf8, 0xfd ) : mandatory ? QColor( 0xfe, 0xe2, 0xe2 ) : QColor( 0xfe, 0xf3, 0xc7 );
-    const QColor text = satisfied ? QColor( 0x1f, 0x2a, 0x44 ) : mandatory ? QColor( 0x99, 0x1b, 0x1b ) : QColor( 0x92, 0x40, 0x0e );
+    // Satisfied rows use the theme's panel color (alternate-background-color in the stylesheet).
+    const QColor background = satisfied ? option.palette.color( QPalette::AlternateBase )
+        : mandatory                     ? QColor( 0xfb, 0xe1, 0xe1 )
+                                        : QColor( 0xfd, 0xf1, 0xd8 );
+    const QColor text = satisfied ? option.palette.color( QPalette::Text )
+        : mandatory               ? QColor( 0x9b, 0x2c, 0x2c )
+                                  : QColor( 0x8a, 0x5a, 0x00 );
     const auto statusImage = satisfied ? Calamares::StatusOk : mandatory ? Calamares::StatusError : Calamares::StatusWarning;
 
     painter->setRenderHint( QPainter::Antialiasing );

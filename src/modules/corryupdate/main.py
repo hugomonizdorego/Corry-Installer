@@ -41,8 +41,13 @@ class TemporaryFile:
         self.backup = self.path.with_name(self.path.name + ".corry-backup")
 
     def __enter__(self):
+        self.in_place = None
         if self.path.exists() or self.path.is_symlink():
-            self.path.rename(self.backup)
+            try:
+                self.path.rename(self.backup)
+            except OSError:
+                # A bind-mounted file cannot be renamed: overwrite it in place.
+                self.in_place = self.path.read_bytes()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.source:
             shutil.copyfile(self.source, self.path)
@@ -52,6 +57,9 @@ class TemporaryFile:
         return self
 
     def __exit__(self, *exc):
+        if self.in_place is not None:
+            self.path.write_bytes(self.in_place)
+            return False
         if self.path.exists() or self.path.is_symlink():
             self.path.unlink()
         if self.backup.exists() or self.backup.is_symlink():
@@ -64,18 +72,26 @@ def update(root, configuration, warn):
         warn("Could not refresh the package lists; keeping the packages from the installation media.")
         return
     libcalamares.job.setprogress(0.4)
-    if call(["apt-get", "--fix-broken", "install"] + APT_OPTIONS, 1800):
+    if call(["apt-get", "--fix-broken", "install"] + APT_OPTIONS, 0):
         warn("Could not repair package dependencies online.")
     libcalamares.job.setprogress(0.6)
     mode = configuration.get("upgrade", "safe")
     if mode in ("safe", "full"):
         command = "full-upgrade" if mode == "full" else "upgrade"
         extra = [] if mode == "full" else ["--with-new-pkgs"]
-        if call(["apt-get", command] + extra + APT_OPTIONS, 3600):
+        # Download first: a slow line may be interrupted safely (the updates are
+        # then skipped). Installing runs without a time limit, so dpkg is never
+        # killed half-way.
+        if call(["apt-get", "--download-only", command] + extra + APT_OPTIONS,
+                int(configuration.get("downloadTimeout", 7200))):
+            warn("Could not download all updates in time; the system keeps the packages from the installation "
+                 "media. Run 'sudo apt upgrade' after installation.")
+        elif call(["apt-get", "--no-download", command] + extra + APT_OPTIONS, 0):
+            call(["dpkg", "--configure", "-a"], 0)
             warn("Could not install all updates; the system is complete but not fully up to date.")
 
 
-def run():
+def update_target():
     root = libcalamares.globalstorage.value("rootMountPoint")
     if not root or root == "/":
         return ("Invalid target", "Package checks require a mounted target system.")
@@ -83,7 +99,7 @@ def run():
     warnings = []
     warn = warnings.append
     with TemporaryFile(Path(root) / "usr/sbin/policy-rc.d", POLICY):
-        if call(["dpkg", "--configure", "-a"], 1800):
+        if call(["dpkg", "--configure", "-a"], 0):
             warn("Some packages could not be configured.")
         libcalamares.job.setprogress(0.2)
         url = configuration.get("checkUrl", "http://deb.debian.org/debian/")
@@ -96,7 +112,7 @@ def run():
                 update(root, configuration, warn)
         else:
             libcalamares.utils.debug("Corry: offline, installing from the installation media only.")
-            if call(["apt-get", "--fix-broken", "install", "--no-download"] + APT_OPTIONS, 1800):
+            if call(["apt-get", "--fix-broken", "install", "--no-download"] + APT_OPTIONS, 0):
                 warn("Broken packages could not be repaired offline; connect to the internet and run "
                      "'sudo apt --fix-broken install' after installation.")
         call(["apt-get", "clean"], 300)
@@ -104,3 +120,13 @@ def run():
     for message in warnings:
         libcalamares.utils.warning("Corry: " + message)
     return None
+
+
+def run():
+    # Updates are optional: an unexpected error is reported, never fatal.
+    try:
+        return update_target()
+    except Exception as exc:
+        libcalamares.utils.warning("Corry: checking and updating packages stopped early ({}: {}); the system keeps "
+                                   "the packages from the installation media.".format(type(exc).__name__, exc))
+        return None

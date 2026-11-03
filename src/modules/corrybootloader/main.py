@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Install the boot loader chosen on Corry's System page instead of GRUB.
+"""Install the boot loader chosen on Corry's Boot loader page instead of GRUB.
 
 GRUB is the default and is installed by the usual bootloader module. When the
-user chose systemd-boot, rEFInd, EXTLINUX or U-Boot's menu, this job runs
+user chose systemd-boot, rEFInd or EXTLINUX, this job runs
 before grubcfg/bootloader: it downloads the packages into the target, installs
 and checks the loader, and then purges GRUB and its files so that only one
 boot loader remains. Should any step fail, the choice falls back to GRUB (the
@@ -84,8 +84,13 @@ def call(args, timeout=1800):
 
 
 def output(args, timeout=600):
+    """stdout of a target command, or None when it fails.
+
+    check_target_env_output returns the output; target_env_process_output
+    would only return the exit code.
+    """
     try:
-        return libcalamares.utils.target_env_process_output(list(args), None, "", timeout)
+        return libcalamares.utils.check_target_env_output(list(args), "", timeout)
     except subprocess.CalledProcessError as exc:
         libcalamares.utils.debug("Corry: {} failed: {}".format(" ".join(args), exc.output))
         return None
@@ -101,9 +106,28 @@ def host(args, timeout=120):
         return None
 
 
-def installed(package):
+def status(package):
+    """dpkg's two-letter status of @p package ("ii", "iU", "rc", ...); "" if unknown."""
     text = output(["dpkg-query", "-W", "-f=${db:Status-Abbrev}", package], 60)
-    return bool(text) and text.startswith("ii")
+    return (text or "")[:2]
+
+
+def installed(package):
+    return status(package) == "ii"
+
+
+def present(package):
+    """Installed in any state, also half-installed or with configuration files left."""
+    state = status(package)
+    return len(state) == 2 and state[1] != "n"
+
+
+def apt_install(packages, configuration):
+    """Download first (safe to interrupt on a slow line), then install with no time limit."""
+    download = int(configuration.get("downloadTimeout", 7200))
+    if call(APT + ["--no-install-recommends", "--download-only", "install"] + packages, download):
+        return False
+    return call(APT + ["--no-install-recommends", "--no-download", "install"] + packages, 0) == 0
 
 
 def architecture():
@@ -208,6 +232,57 @@ def boot_menu_entries(product, cmdline, kernel_list, prefix):
 
 
 TIMEOUT = 5
+# GRUB's packages once remove_grub() has started purging them.
+PURGED_GRUB = []
+# What each alternative loader can read /boot from, when global storage does
+# not say (corrysystem-bootloader.conf is the source).
+DEFAULT_FILESYSTEMS = {"refind": ["ext2", "ext3", "ext4", "btrfs"], "extlinux": ["ext2", "ext3", "ext4", "xfs"]}
+
+
+def disk_partitions(disk):
+    """[(number, filesystem, flags)] of @p disk from parted's machine-readable listing."""
+    result = host(["parted", "-s", "-m", disk, "unit", "B", "print"])
+    if result is None or result.returncode:
+        return []
+    found = []
+    for line in result.stdout.splitlines():
+        fields = line.rstrip(";").split(":")
+        if len(fields) >= 7 and fields[0].isdigit():
+            found.append((int(fields[0]), fields[4], [f.strip() for f in fields[6].split(",") if f.strip()]))
+    return found
+
+
+def unsuitable(wanted, loader):
+    """Why @p wanted cannot boot the planned layout, or None.
+
+    These are the same checks as on the Boot loader page, made again here with
+    the real partition list, so a loader that cannot work never replaces GRUB.
+    """
+    boot = partition_at("/boot") or partition_at("/") or {}
+    fs = str(boot.get("fs") or "").lower()
+    if wanted in ("refind", "extlinux") and boot.get("luksMapperName"):
+        return "it cannot read an encrypted /boot"
+    filesystems = [str(f).lower() for f in (loader.get("filesystems") or DEFAULT_FILESYSTEMS.get(wanted, []))]
+    if filesystems and fs and fs not in filesystems:
+        return "it cannot read a {} /boot (it reads {})".format(fs, ", ".join(filesystems))
+    if wanted != "extlinux":
+        return None
+    if fs == "btrfs":
+        return "it cannot read Corry's compressed Btrfs"
+    others = libcalamares.globalstorage.value("osproberLines") or []
+    if others:
+        names = sorted({str(line).split(":")[1] for line in others if str(line).count(":") >= 1} - {""})
+        return "another operating system ({}) would lose its boot code".format(", ".join(names) or "found by os-prober")
+    disk, number = disk_of(boot.get("device", ""))
+    if not disk:
+        return "the disk that holds /boot is unknown"
+    if partition_table(disk) != "gpt":
+        if number > 4:
+            return "/boot is on a logical partition, which the EXTLINUX boot code cannot start"
+        for other, _, flags in disk_partitions(disk):
+            if other != number and "boot" in flags:
+                return "partition {} of {} is the active (bootable) one".format(other, disk)
+    return None
 
 
 # --- the loaders -------------------------------------------------------------
@@ -219,15 +294,27 @@ def efi_variables_entry(label, disk, number, loader_path):
     host(["efibootmgr", "-c", "-w", "-d", disk, "-p", str(number), "-L", label, "-l", loader_path])
 
 
-def remove_efi_entries(matching):
-    """Delete NVRAM entries whose loader path or label contains @p matching (case-insensitive)."""
+def efi_entries():
+    """{boot number: description} of the firmware's boot entries."""
     listing = host(["efibootmgr", "-v"])
-    if not listing:
-        return
-    for line in listing.stdout.splitlines():
+    entries = {}
+    for line in (listing.stdout.splitlines() if listing and listing.returncode == 0 else []):
         match = re.match(r"^Boot([0-9A-Fa-f]{4})\*?\s+(.*)$", line)
-        if match and matching.lower() in match.group(2).lower():
-            host(["efibootmgr", "-b", match.group(1), "-B"])
+        if match:
+            entries[match.group(1).upper()] = match.group(2)
+    return entries
+
+
+def remove_efi_entries(matching, partuuid):
+    """Delete the entries whose path or label contains @p matching on the ESP @p partuuid only.
+
+    Entries for other disks and other systems are never touched.
+    """
+    if not partuuid:
+        return
+    for number, description in efi_entries().items():
+        if matching.lower() in description.lower() and partuuid.lower() in description.lower():
+            host(["efibootmgr", "-b", number, "-B"])
 
 
 def install_systemd_boot(root, configuration, cmdline, product, arch, problems):
@@ -327,12 +414,14 @@ def install_refind(root, configuration, cmdline, product, arch, problems):
         if (share / "icons").is_dir():
             shutil.copytree(share / "icons", destination / "icons", dirs_exist_ok=True)
         write(destination / "refind.conf", conf)
+    # The minimal entry keeps root= and rootflags= (Btrfs subvolume @), or it cannot mount /.
+    minimal = " ".join(["ro"] + [p for p in cmdline.split() if p.startswith(("root=", "rootflags="))])
     write(Path(root, "boot/refind_linux.conf"),
           '"Boot with standard options"  "{0}"\n"Boot to single-user mode"    "{0} single"\n'
-          '"Boot with minimal options"   "ro root={1}"\n'.format(cmdline, cmdline.split("root=", 1)[1].split()[0]))
+          '"Boot with minimal options"   "{1}"\n'.format(cmdline, minimal))
     esp_partition = partition_at(esp) or {}
     disk, number = disk_of(esp_partition.get("device", ""))
-    remove_efi_entries("refind")
+    remove_efi_entries("refind", esp_partition.get("partuuid", ""))
     efi_variables_entry("rEFInd Boot Manager", disk, number, "\\EFI\\refind\\refind_{}.efi".format(suffix))
     if not kernels(root):
         problems.append("no kernel found in /boot")
@@ -402,24 +491,7 @@ cmdline='{cmdline}'
     return True
 
 
-def install_uboot(root, configuration, cmdline, product, arch, problems):
-    cmdline_without_root = " ".join(p for p in cmdline.split() if not p.startswith("root="))
-    root_param = next((p for p in cmdline.split() if p.startswith("root=")), "")
-    write(Path(root, "etc/default/u-boot"),
-          '# Written by Corry Installer; read by u-boot-update.\nU_BOOT_MENU_LABEL="{}"\n'
-          'U_BOOT_PARAMETERS="{}"\nU_BOOT_ROOT="{}"\nU_BOOT_TIMEOUT="{}"\n'.format(product, cmdline_without_root, root_param,
-                                                                                int(TIMEOUT) * 10))
-    if call(["u-boot-update"], 300):
-        problems.append("u-boot-update failed")
-        return False
-    if not Path(root, "boot/extlinux/extlinux.conf").exists():
-        problems.append("u-boot-update wrote no /boot/extlinux/extlinux.conf")
-        return False
-    return True
-
-
-INSTALLERS = {"systemd-boot": install_systemd_boot, "refind": install_refind, "extlinux": install_extlinux,
-              "uboot": install_uboot}
+INSTALLERS = {"systemd-boot": install_systemd_boot, "refind": install_refind, "extlinux": install_extlinux}
 
 
 # --- GRUB removal ------------------------------------------------------------
@@ -433,29 +505,37 @@ def is_grub_binary(path):
 
 
 def remove_grub(root, configuration, firmware, problems):
-    """Purge GRUB's packages and delete what they leave in /boot and on the EFI partition."""
-    packages = [p for p in configuration.get("grubPackages", DEFAULT_GRUB_PACKAGES) if installed(p)]
-    if packages and call(APT + ["purge"] + packages, 1800):
+    """Purge GRUB's packages and delete what they leave in the target.
+
+    GRUB has not been written to the EFI partition yet (the bootloader module
+    runs later), so on a reused EFI partition every EFI/... directory belongs to
+    another system and is left alone. Only an EFI partition formatted by this
+    installation is cleaned of GRUB's files, and only its own firmware entries.
+    """
+    packages = [p for p in configuration.get("grubPackages", DEFAULT_GRUB_PACKAGES) if present(p)]
+    PURGED_GRUB[:] = packages
+    if packages and call(APT + ["purge"] + packages, 0):
         problems.append("GRUB's packages could not be purged: " + ", ".join(packages))
     for relative in ("boot/grub", "etc/default/grub", "etc/default/grub.d", "etc/grub.d"):
         path = Path(root, relative)
         if path.is_dir() and not path.is_symlink():
             shutil.rmtree(path, ignore_errors=True)
-        elif path.exists():
+        elif path.exists() or path.is_symlink():
             path.unlink()
-    if firmware == "efi":
+    esp_partition = partition_at(esp_path()) or {}
+    if firmware == "efi" and esp_partition.get("claimed"):
         esp_dir = Path(root + esp_path())
         label = configuration.get("grubEfiDirectory", "debian")
         for candidate in esp_dir.glob("EFI/*"):
             if candidate.name.lower() == label.lower() and candidate.is_dir():
                 shutil.rmtree(candidate, ignore_errors=True)
         for candidate in esp_dir.glob("EFI/[Bb][Oo][Oo][Tt]/*.[Ee][Ff][Ii]"):
-            if is_grub_binary(candidate) and b"systemd" not in candidate.read_bytes()[:200000] \
-                    and b"rEFInd" not in candidate.read_bytes()[:200000]:
+            data = candidate.read_bytes()[:200000]
+            if is_grub_binary(candidate) and b"systemd" not in data and b"rEFInd" not in data:
                 candidate.unlink()
         for candidate in esp_dir.glob("EFI/[Bb][Oo][Oo][Tt]/fbx64.efi"):
             candidate.unlink()
-        remove_efi_entries("\\EFI\\{}\\".format(label))
+        remove_efi_entries("\\EFI\\{}\\".format(label), esp_partition.get("partuuid", ""))
     return packages
 
 
@@ -469,6 +549,55 @@ def record(system, loader, result, message):
 
 
 # --- the job -----------------------------------------------------------------
+
+def install_alternative(root, configuration, wanted, name, loader, firmware, product, cmdline, problems):
+    """Download, install and check the alternative loader, then remove GRUB.
+
+    Returns the purged GRUB packages (a list) on success, None otherwise.
+    A failed attempt leaves nothing of the alternative behind.
+    """
+    installer = INSTALLERS[wanted]
+    packages = [str(p) for p in (loader.get("packages") or [])]
+    arch = architecture()
+    entries_before = set(efi_entries()) if firmware == "efi" else set()
+    if wanted == "refind":
+        call(["sh", "-c", "echo 'refind refind/install_to_esp boolean false' | debconf-set-selections"], 60)
+    if call(["apt-get", "update"], 900):
+        problems.append("the package lists could not be refreshed")
+        return None
+    if packages and not apt_install(packages, configuration):
+        problems.append("apt-get could not download or install " + ", ".join(packages))
+        done = False
+    else:
+        libcalamares.job.setprogress(0.4)
+        try:
+            done = installer(root, configuration, cmdline, product, arch, problems)
+        except (OSError, ValueError, KeyError, IndexError, subprocess.SubprocessError) as exc:
+            problems.append("{}: {}".format(type(exc).__name__, exc))
+            done = False
+    if done:
+        libcalamares.job.setprogress(0.7)
+        try:
+            purged = remove_grub(root, configuration, firmware, problems)
+        except OSError as exc:
+            # The new loader works; a GRUB file that could not be deleted is only a leftover.
+            problems.append("GRUB's files were not all removed: {}".format(exc))
+            purged = []
+        if wanted == "systemd-boot":
+            # Debian's systemd-boot package adds signed shim + signed
+            # systemd-boot to the ESP once signed GRUB is gone (best effort).
+            call(["dpkg-reconfigure", "-fnoninteractive", "systemd-boot"], 300)
+        return purged
+    # Leave no half-installed alternative next to GRUB: finish dpkg's work,
+    # then purge every package of the attempt that is present in any state.
+    call(["dpkg", "--configure", "-a"], 0)
+    leftovers = [p for p in packages if present(p)]
+    if leftovers and call(APT + ["purge"] + leftovers, 0):
+        problems.append("{} could not be purged".format(", ".join(leftovers)))
+    for number in set(efi_entries()) - entries_before:
+        host(["efibootmgr", "-b", number, "-B"])
+    return None
+
 
 def run():
     global TIMEOUT
@@ -488,11 +617,9 @@ def run():
     branding = libcalamares.globalstorage.value("branding") or {}
     product = branding.get("bootloaderEntryName") or branding.get("productName") or "Linux"
     problems = []
-    installer = INSTALLERS.get(wanted)
     cmdline = kernel_params(configuration)
-    packages = [str(p) for p in (loader.get("packages") or [])]
-    done = False
-    if installer is None:
+    purged = None
+    if wanted not in INSTALLERS:
         problems.append("Corry does not know how to install '{}'".format(wanted))
     elif cmdline is None:
         problems.append("no root partition is known")
@@ -502,46 +629,30 @@ def run():
         problems.append("EXTLINUX is a BIOS boot loader; this computer started with UEFI")
     elif firmware == "efi" and not partition_at(esp_path()):
         problems.append("no EFI system partition is mounted on " + esp_path())
+    elif unsuitable(wanted, loader):
+        problems.append(unsuitable(wanted, loader))
     elif not online(configuration.get("checkUrl", "http://deb.debian.org/debian/")):
         problems.append("the computer is offline and the packages cannot be downloaded")
     else:
-        arch = architecture()
-        with TemporaryFile(Path(root) / "usr/sbin/policy-rc.d", POLICY):
-            resolv = Path("/etc/resolv.conf")
-            keep_dns = TemporaryFile(Path(root) / "etc/resolv.conf", source=resolv) if resolv.exists() and root != "/" else None
-            if keep_dns:
-                keep_dns.__enter__()
-            try:
-                if wanted == "refind":
-                    call(["sh", "-c", "echo 'refind refind/install_to_esp boolean false' | debconf-set-selections"], 60)
-                if call(["apt-get", "update"], 900):
-                    problems.append("the package lists could not be refreshed")
-                elif packages and call(APT + ["--no-install-recommends", "install"] + packages, 1800):
-                    problems.append("apt-get could not install " + ", ".join(packages))
+        try:
+            with TemporaryFile(Path(root) / "usr/sbin/policy-rc.d", POLICY):
+                resolv = Path("/etc/resolv.conf")
+                if resolv.exists() and root != "/":
+                    with TemporaryFile(Path(root) / "etc/resolv.conf", source=resolv):
+                        purged = install_alternative(root, configuration, wanted, name, loader, firmware, product,
+                                                     cmdline, problems)
                 else:
-                    libcalamares.job.setprogress(0.4)
-                    try:
-                        done = installer(root, configuration, cmdline, product, arch, problems)
-                    except (OSError, ValueError, KeyError) as exc:
-                        problems.append("{}: {}".format(type(exc).__name__, exc))
-                        done = False
-                    if done:
-                        libcalamares.job.setprogress(0.7)
-                        purged = remove_grub(root, configuration, firmware, problems)
-                        if wanted == "systemd-boot":
-                            # Debian's systemd-boot package adds signed shim + signed
-                            # systemd-boot to the ESP once signed GRUB is gone (best effort).
-                            call(["dpkg-reconfigure", "-fnoninteractive", "systemd-boot"], 300)
-                    elif packages:
-                        # Leave no half-installed alternative next to GRUB.
-                        call(APT + ["purge"] + [p for p in packages if installed(p)], 1800)
-                        remove_efi_entries(name)
+                    purged = install_alternative(root, configuration, wanted, name, loader, firmware, product,
+                                                 cmdline, problems)
                 call(["apt-get", "clean"], 300)
-            finally:
-                if keep_dns:
-                    keep_dns.__exit__(None, None, None)
+        except Exception as exc:  # Never stop the installation: GRUB is the fallback.
+            problems.append("unexpected {}: {}".format(type(exc).__name__, exc))
+            missing = [p for p in PURGED_GRUB if not installed(p)] if purged is None else []
+            if missing:
+                # GRUB was already being removed: bring it back for the bootloader module.
+                call(APT + ["install"] + missing, 0)
     libcalamares.job.setprogress(1.0)
-    if done:
+    if purged is not None:
         message = "{} installed; GRUB removed ({}).".format(name, ", ".join(purged) if purged else "no packages")
         libcalamares.utils.debug("Corry: " + message)
         for problem in problems:

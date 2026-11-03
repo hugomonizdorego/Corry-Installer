@@ -51,7 +51,7 @@ public:
 
     void init();
 
-    /** @brief Corry: "greeting" (welcome, language, video) or "check"
+    /** @brief Corry: "greeting" (welcome, language, image) or "check"
      * (requirements and internet). Empty keeps the stock Calamares page.
      */
     void setCorryPage( const QString& page );
@@ -66,7 +66,7 @@ protected:
 private:
     /// @brief Fill the list of languages with the available translations
     void initLanguages();
-    /// @brief Corry welcome video (QML) or, without QML, the welcome image
+    /// @brief Corry welcome image, in a QML card (or a plain image without QML)
     QWidget* welcomeMedia();
 
     Ui::WelcomePage* ui;

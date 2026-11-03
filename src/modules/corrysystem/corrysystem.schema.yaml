@@ -12,6 +12,7 @@ definitions:
       description: { type: string }
       packages: { type: array, items: { type: string, pattern: "^[a-z0-9][a-z0-9+.-]+$" } }
       default: { type: boolean }
+      availableOn: { type: array, items: { type: string, enum: [ stable, testing ] } }
       firmware: { type: array, items: { type: string, enum: [ bios, efi ] } }
       architectures: { type: array, items: { type: string } }
       filesystems: { type: array, items: { type: string } }
@@ -21,6 +22,8 @@ definitions:
 additionalProperties: false
 type: object
 properties:
+  section: { type: string, enum: [ init, bootloader ] }
+  base: { type: string, enum: [ "", stable, testing ] }
   init: { type: array, items: { $ref: "#/definitions/option" }, minItems: 1 }
   bootloader: { type: array, items: { $ref: "#/definitions/option" }, minItems: 1 }
-required: [ init, bootloader ]
+required: [ section ]

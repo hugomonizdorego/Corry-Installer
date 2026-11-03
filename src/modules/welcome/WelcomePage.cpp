@@ -162,7 +162,28 @@ WelcomePage::setCorryPage( const QString& page )
     row->addWidget( advice, 1 );
     row->addWidget( recheck );
     ui->verticalLayout->insertWidget( ui->verticalLayout->indexOf( m_checkingWidget ) + 1, card );
-    connect( recheck, &QPushButton::clicked, this, [] { Calamares::ModuleManager::instance()->checkRequirements(); } );
+    // While a requirement that blocks is unmet, ModuleManager already checks
+    // again every 5 seconds; a press then only waits for that result instead of
+    // starting a second, parallel check loop.
+    connect( Calamares::ModuleManager::instance(),
+             &Calamares::ModuleManager::requirementsComplete,
+             recheck,
+             [ recheck ]( bool canContinue )
+             {
+                 recheck->setEnabled( true );
+                 recheck->setProperty( "corryRetryPending", !canContinue );
+             } );
+    connect( recheck,
+             &QPushButton::clicked,
+             this,
+             [ recheck ]
+             {
+                 recheck->setEnabled( false );
+                 if ( !recheck->property( "corryRetryPending" ).toBool() )
+                 {
+                     Calamares::ModuleManager::instance()->checkRequirements();
+                 }
+             } );
     CALAMARES_RETRANSLATE(
         introduction->setText( tr( "Corry checks that this computer can run %1 and whether it is online." )
                                    .arg( Calamares::Branding::instance()->shortProductName() ) );
@@ -181,7 +202,7 @@ WelcomePage::welcomeMedia()
     const QString qml = Calamares::Branding::instance()->componentDirectory() + QStringLiteral( "/welcome-media.qml" );
     if ( QFile::exists( qml ) )
     {
-        // A looping, muted product video with the welcome image as poster.
+        // The welcome image in the theme's soft card (images only, no video).
         auto* view = new QQuickWidget( this );
         view->setObjectName( "corryWelcomeMedia" );
         view->setResizeMode( QQuickWidget::SizeRootObjectToView );

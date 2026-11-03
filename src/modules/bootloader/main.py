@@ -389,7 +389,7 @@ def get_efi_suffix_generator(name):
     if name.count("${") > 1:
         raise ValueError("EFI ID {!r} contains multiple generators".format(name))
     import re
-    prefix, generator_name = re.match("(.*)\${([^}]*)}$", name).groups()
+    prefix, generator_name = re.match(r"(.*)\${([^}]*)}$", name).groups()
     if generator_name not in ("SERIAL", "RANDOM", "PHRASE"):
         raise ValueError("EFI suffix {!r} is unknown".format(generator_name))
 
@@ -631,11 +631,20 @@ def run_grub_install(fw_type, partitions, efi_directory, install_hybrid_grub):
                                    + " --target=" + efi_target + " --efi-directory=" + efi_directory
                                    + " --bootloader-id=" + efi_bootloader_id + " --force"])
         else:
-            check_target_env_call([libcalamares.job.configuration["grubInstall"],
-                                   "--target=" + efi_target,
-                                   "--efi-directory=" + efi_directory,
-                                   "--bootloader-id=" + efi_bootloader_id,
-                                   "--force"])
+            command = [libcalamares.job.configuration["grubInstall"],
+                       "--target=" + efi_target,
+                       "--efi-directory=" + efi_directory,
+                       "--bootloader-id=" + efi_bootloader_id,
+                       "--force"]
+            try:
+                check_target_env_call(command)
+            except subprocess.CalledProcessError as exc:
+                # Corry: some firmware refuses new boot entries (full or
+                # write-protected NVRAM). GRUB is then installed without one and
+                # starts from the removable-media path (installEFIFallback).
+                libcalamares.utils.warning("Corry: grub-install failed ({}); retrying without an NVRAM entry; "
+                                           "the computer starts GRUB from EFI/BOOT.".format(exc.returncode))
+                check_target_env_call(command + ["--no-nvram"])
     else:
         if efi_directory is not None and not install_hybrid_grub:
             libcalamares.utils.warning(_("Cannot install BIOS bootloader on UEFI installation when install_hybrid_grub is 'False'!"))
@@ -734,7 +743,22 @@ def install_grub(efi_directory, fw_type, install_hybrid_grub):
                                            efi_grub_file)
             efi_file_target = os.path.join(install_efi_boot_directory, efi_boot_file)
 
-            shutil.copy2(efi_file_source, efi_file_target)
+            # Corry: with Secure Boot packages (shim-signed), the firmware trusts
+            # only shim (signed by Microsoft's CA), not Debian's GRUB on its own.
+            # Put the whole chain on the removable path, as Debian's
+            # grub-install --force-extra-removable does: shim as BOOTx64.EFI,
+            # with GRUB, MokManager and GRUB's config stub next to it.
+            suffix = efi_grub_file[len("grub"):]  # "x64.efi", "ia32.efi", "aa64.efi"
+            id_directory = os.path.join(install_efi_directory_firmware, efi_bootloader_id)
+            shim = os.path.join(id_directory, "shim" + suffix)
+            if os.path.exists(shim):
+                libcalamares.utils.debug("  .. Secure Boot chain (shim) on the removable path")
+                shutil.copy2(shim, efi_file_target)
+                for name in (efi_grub_file, "mm" + suffix, "grub.cfg"):
+                    if os.path.exists(os.path.join(id_directory, name)):
+                        shutil.copy2(os.path.join(id_directory, name), os.path.join(install_efi_boot_directory, name))
+            else:
+                shutil.copy2(efi_file_source, efi_file_target)
     if fw_type == "bios" or install_hybrid_grub:
         libcalamares.utils.debug("Bootloader: grub (bios)")
         run_grub_install("bios", partitions, efi_directory, install_hybrid_grub)

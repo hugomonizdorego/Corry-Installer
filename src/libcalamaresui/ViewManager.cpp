@@ -128,12 +128,13 @@ isCorry()
     return Calamares::Branding::instance() && Calamares::Branding::instance()->componentName() == QStringLiteral( "corry" );
 }
 
-/// Corry's heading for a page, by module name; empty for pages with their own.
+/// Corry's heading for a page, by module instance; empty for pages with their own.
 QPair< QString, QString >
-corryHeading( const QString& module )
+corryHeading( const Calamares::ModuleSystem::InstanceKey& key )
 {
     const auto* branding = Calamares::Branding::instance();
     const QString product = branding ? branding->shortProductName() : QString();
+    const QString module = key.module();
     if ( module == QStringLiteral( "locale" ) )
     {
         return { QCoreApplication::translate( "Corry", "Where are you?" ),
@@ -157,12 +158,22 @@ corryHeading( const QString& module )
                  QCoreApplication::translate( "Corry", "Your name, how you sign in, and the passwords for you and the "
                                                        "administrator." ) };
     }
+    if ( module == QStringLiteral( "corrysystem" ) && key.id() == QStringLiteral( "bootloader" ) )
+    {
+        return { QCoreApplication::translate( "Corry", "Choose the boot loader" ),
+                 QCoreApplication::translate( "Corry", "The program your computer starts first; it loads %1. GRUB is "
+                                                       "the default and works offline. An alternative is downloaded "
+                                                       "during installation and needs internet." )
+                     .arg( product ) };
+    }
     if ( module == QStringLiteral( "corrysystem" ) )
     {
-        return { QCoreApplication::translate( "Corry", "System components" ),
-                 QCoreApplication::translate( "Corry", "Choose the init system and the boot loader of the new system. "
-                                                       "The defaults are tested and work offline; the alternatives "
-                                                       "need an internet connection." ) };
+        return { QCoreApplication::translate( "Corry", "Choose the init system" ),
+                 QCoreApplication::translate( "Corry", "The first program %1 starts; it brings up services and the "
+                                                       "desktop. systemd is the default and works offline. An "
+                                                       "alternative is downloaded during installation and needs "
+                                                       "internet." )
+                     .arg( product ) };
     }
     if ( module == QStringLiteral( "summary" ) )
     {
@@ -182,13 +193,15 @@ corryPage( ViewStep* step )
     {
         return step->widget();
     }
-    const auto heading = corryHeading( step->moduleInstanceKey().module() );
+    const auto heading = corryHeading( step->moduleInstanceKey() );
     auto* page = new QWidget;
     page->setObjectName( QStringLiteral( "corryPage" ) );
     auto* pageLayout = new QVBoxLayout( page );
     pageLayout->setContentsMargins( 10, 0, 10, 0 );
     auto* card = new CorryCard( page, QMargins( 30, 18, 30, 16 ) );
     card->setObjectName( QStringLiteral( "corryPageCard" ) );
+    // The stylesheet can give single pages their own card (the welcome page's hero color).
+    card->setProperty( "page", step->moduleInstanceKey().id() );
     pageLayout->addWidget( card );
     auto* layout = new QVBoxLayout( card );
     layout->setSpacing( 4 );

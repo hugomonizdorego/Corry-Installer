@@ -41,7 +41,8 @@ def main():
         print("+", " ".join(command), flush=True)
         return subprocess.run(wrap(command), stdin=subprocess.DEVNULL, timeout=timeout if timeout > 0 else None).returncode
 
-    def target_env_process_output(command, callback=None, stdin=None, timeout=-1):
+    def check_target_env_output(command, stdin=None, timeout=-1):
+        """As in Calamares: the merged output, or CalledProcessError with .output."""
         print("+", " ".join(command), flush=True)
         result = subprocess.run(wrap(command), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, timeout=timeout if timeout > 0 else None)
@@ -49,11 +50,19 @@ def main():
             raise subprocess.CalledProcessError(result.returncode, command, output=result.stdout)
         return result.stdout
 
+    def target_env_process_output(command, callback=None, stdin=None, timeout=-1):
+        """As in Calamares 3.3: lines go to @p callback, the result is the exit code (or an exception)."""
+        text = check_target_env_output(command, stdin, timeout)
+        if callback:
+            for line in text.splitlines():
+                callback(line)
+        return 0
+
     fake = types.SimpleNamespace(
         globalstorage=types.SimpleNamespace(value=storage.get, insert=storage.__setitem__, contains=storage.__contains__),
         job=types.SimpleNamespace(configuration=configuration, setprogress=lambda value: None),
         utils=types.SimpleNamespace(target_env_call=target_env_call, target_env_process_output=target_env_process_output,
-                                    check_target_env_call=target_env_call, check_target_env_output=target_env_process_output,
+                                    check_target_env_call=target_env_call, check_target_env_output=check_target_env_output,
                                     warning=lambda text: print("WARNING:", text, flush=True),
                                     debug=lambda text: print("DEBUG:", text, flush=True),
                                     gettext_path=lambda: None, gettext_languages=lambda: []))

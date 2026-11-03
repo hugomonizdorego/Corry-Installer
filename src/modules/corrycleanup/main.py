@@ -105,30 +105,48 @@ def pretty_name():
     return "Remove the live session and the installer"
 
 
+def purge(packages, warn):
+    """Purge with dpkg (no dependency resolution, so nothing else is removed).
+
+    When dpkg refuses the whole set (another package depends on one of them),
+    each package is tried on its own and the ones that must stay are reported.
+    """
+    if not packages:
+        return
+    if libcalamares.utils.target_env_call(["dpkg", "--purge"] + packages, "", 0) == 0:
+        return
+    kept = [p for p in packages if installed([p])
+            and libcalamares.utils.target_env_call(["dpkg", "--purge", p], "", 0) != 0]
+    if kept:
+        warn("{} stay installed because other packages depend on them; remove them with "
+             "'sudo apt purge {}' after installation".format(", ".join(kept), " ".join(kept)))
+
+
 def run():
     # Never allow this module to run against the live root.
     root = libcalamares.globalstorage.value("rootMountPoint")
     if not root or root == "/":
         return ("Invalid target", "Corry cleanup requires a mounted target system.")
     configuration = libcalamares.job.configuration
-    packages = installed(LIVE_PACKAGES + INSTALLER_PACKAGES + tuple(configuration.get("purgePackages", [])))
-    if packages:
-        code = libcalamares.utils.target_env_call(["dpkg", "--purge"] + packages)
-        if code:
-            return ("Could not remove live-session packages", "Target dpkg returned error {}.".format(code))
+    # Nothing here may stop the installation: what cannot be removed is reported.
+    problems = []
+    warn = problems.append
+    purge(installed(LIVE_PACKAGES + INSTALLER_PACKAGES + tuple(configuration.get("purgePackages", []))), warn)
     live_user = configuration.get("liveUser", "")
     new_user = libcalamares.globalstorage.value("username")
     try:
         remove_installer(root, new_user, configuration.get("removeFiles", []))
     except (OSError, ValueError) as exc:
-        return ("Could not remove the installer", str(exc))
+        warn("some installer files could not be removed: {}".format(exc))
     if live_user and live_user != new_user:
         if not re.fullmatch(r"[a-z_][a-z0-9_-]*", live_user) or live_user == "root":
-            return ("Invalid live username", "Set corrycleanup.liveUser to the live image account.")
-        if libcalamares.utils.target_env_call(["id", "-u", live_user]) == 0:
+            warn("corrycleanup.liveUser '{}' is not a valid live account name".format(live_user))
+        elif libcalamares.utils.target_env_call(["id", "-u", live_user]) == 0:
             # A preserved /home partition may contain a real user's directory
             # with the same name as the live account. Remove the account only.
             code = libcalamares.utils.target_env_call(["userdel", "--", live_user])
             if code:
-                return ("Could not remove the live account", "Target userdel returned error {}.".format(code))
+                warn("the live account {} could not be removed (userdel returned {})".format(live_user, code))
+    for problem in problems:
+        libcalamares.utils.warning("Corry cleanup: " + problem + ".")
     return None

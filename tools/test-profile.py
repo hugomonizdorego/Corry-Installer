@@ -25,21 +25,33 @@ def fake_calamares(values=None, configuration=None, call=None, process_output=No
     """A stand-in for libcalamares: global storage, job configuration and logging.
 
     @p call answers target_env_call (an exit code); @p process_output answers
-    target_env_process_output (a string, or raise CalledProcessError).
+    check_target_env_output (a string, or raise CalledProcessError). As in
+    Calamares 3.3, target_env_process_output returns only the exit code.
     """
     values = values if values is not None else {}
     log = types.SimpleNamespace(warnings=[], progress=[])
 
     def default_output(args, *rest):
         return ''
+    answer = process_output or default_output
+
+    def check_output(args, stdin='', timeout=0):
+        return answer(args, None, stdin, timeout)
+
+    def exit_code_only(args, callback=None, stdin='', timeout=0):
+        try:
+            answer(args, callback, stdin, timeout)
+        except subprocess.CalledProcessError as exc:
+            return exc.returncode
+        return 0
     return types.SimpleNamespace(
         globalstorage=types.SimpleNamespace(value=lambda key: values.get(key), insert=values.__setitem__,
                                             contains=lambda key: key in values),
         job=types.SimpleNamespace(configuration=configuration or {}, setprogress=log.progress.append),
         utils=types.SimpleNamespace(target_env_call=call or (lambda *args: 0),
-                                    target_env_process_output=process_output or default_output,
+                                    target_env_process_output=exit_code_only,
                                     check_target_env_call=call or (lambda *args: 0),
-                                    check_target_env_output=process_output or default_output,
+                                    check_target_env_output=check_output,
                                     warning=log.warnings.append, debug=lambda *args: None,
                                     gettext_path=lambda: None, gettext_languages=lambda: []),
         log=log, values=values)
@@ -74,15 +86,20 @@ class SequenceTests(unittest.TestCase):
                 self.assertTrue((module / 'module.desc').exists() or (module / 'CMakeLists.txt').exists(), name)
                 if '@' in name:
                     self.assertIn(name, instances)
-        schemas = {'welcomecheck': 'welcome'}
+        schemas = {'welcomecheck': 'welcome', 'corrysystem-init': 'corrysystem',
+                   'corrysystem-bootloader': 'corrysystem'}
         for config in (PROFILE / 'modules').glob('*.conf'):
             module = schemas.get(config.stem, config.stem)
             schema = ROOT / f'src/modules/{module}/{module}.schema.yaml'
             if schema.exists():
                 jsonschema.Draft7Validator(yaml.safe_load(schema.read_text())).validate(yaml.safe_load(config.read_text()))
         shown = settings['sequence'][0]['show']
+        # Init system and boot loader are two separate pages, in that order.
         self.assertEqual(shown, ['welcome', 'welcome@check', 'locale', 'keyboard', 'partition', 'users',
-                                 'corrysystem', 'summary'])
+                                 'corrysystem@init', 'corrysystem@bootloader', 'summary'])
+        self.assertEqual(instances['corrysystem@init']['config'], 'corrysystem-init.conf')
+        self.assertEqual(instances['corrysystem@bootloader']['config'], 'corrysystem-bootloader.conf')
+        self.assertFalse((PROFILE / 'modules/corrysystem.conf').exists())
         jobs = settings['sequence'][1]['exec']
         for removed in ['packagechooser', 'corryprepare', 'corrypackages']:
             self.assertNotIn(removed, shown + jobs)
@@ -100,22 +117,31 @@ class SequenceTests(unittest.TestCase):
         for name in shown + jobs + ['finished']:
             self.assertIn(' ' + name.split('@')[0] + ' ', build)
         # The profile ships the same module settings the modules are tested with.
-        for name in ['corrysystem', 'corryinit', 'corrybootloader']:
+        for module, name in [('corrysystem', 'corrysystem-init'), ('corrysystem', 'corrysystem-bootloader'),
+                             ('corryinit', 'corryinit'), ('corrybootloader', 'corrybootloader')]:
             self.assertEqual((PROFILE / f'modules/{name}.conf').read_text(),
-                             (ROOT / f'src/modules/{name}/{name}.conf').read_text(), name)
+                             (ROOT / f'src/modules/{module}/{name}.conf').read_text(), name)
 
     def test_system_components_options(self):
-        system = yaml.safe_load((PROFILE / 'modules/corrysystem.conf').read_text())
-        init, loaders = system['init'], system['bootloader']
+        init_page = yaml.safe_load((PROFILE / 'modules/corrysystem-init.conf').read_text())
+        loader_page = yaml.safe_load((PROFILE / 'modules/corrysystem-bootloader.conf').read_text())
+        self.assertEqual((init_page['section'], loader_page['section']), ('init', 'bootloader'))
+        # Each page holds only its own options; the base is filled in per distribution.
+        self.assertNotIn('bootloader', init_page)
+        self.assertNotIn('init', loader_page)
+        self.assertEqual((init_page['base'], loader_page['base']), ('', ''))
+        init, loaders = init_page['init'], loader_page['bootloader']
         self.assertEqual([o['id'] for o in init], ['systemd', 'sysvinit', 'openrc', 'runit'])
-        self.assertEqual([o['id'] for o in loaders], ['grub', 'systemd-boot', 'refind', 'extlinux', 'uboot'])
+        self.assertEqual([o['id'] for o in loaders], ['grub', 'systemd-boot', 'refind', 'extlinux'])
         for group in (init, loaders):
             self.assertTrue(group[0].get('default'))
             self.assertFalse(group[0].get('packages'))
+            self.assertNotIn('availableOn', group[0])
             for option in group[1:]:
                 self.assertFalse(option.get('default'), option['id'])
                 self.assertTrue(option['packages'], option['id'])
                 self.assertTrue(option['description'].isascii())
+                self.assertTrue(set(option['availableOn']) <= {'stable', 'testing'}, option['id'])
         # Each init option names exactly one provider of /sbin/init (verified after the
         # switch; OpenRC runs on SysVinit's init), elogind for sessions, and the pieces
         # systemd used to provide: a session bus, a syslog and cron.
@@ -124,16 +150,23 @@ class SequenceTests(unittest.TestCase):
             self.assertEqual(len(providers), 1, option['id'])
             for needed in ['elogind', 'libpam-elogind', 'dbus-x11', 'rsyslog', 'cron']:
                 self.assertIn(needed, option['packages'], option['id'])
+            self.assertEqual(option['availableOn'], ['stable', 'testing'], option['id'])
         self.assertEqual(init[2]['packages'][0], 'openrc')
         by_id = {o['id']: o for o in loaders}
         self.assertEqual(by_id['systemd-boot']['firmware'], ['efi'])
+        self.assertTrue(by_id['systemd-boot']['needsSystemd'])
         self.assertEqual(by_id['refind']['firmware'], ['efi'])
         self.assertEqual(by_id['extlinux']['firmware'], ['bios'])
         self.assertNotIn('btrfs', by_id['extlinux']['filesystems'])
         self.assertNotIn('xfs', by_id['refind']['filesystems'])
-        self.assertIn('arm64', by_id['uboot']['architectures'])
+        # rEFInd is not in Debian testing; U-Boot is not offered (amd64 packages).
+        self.assertEqual(by_id['refind']['availableOn'], ['stable'])
+        self.assertNotIn('uboot', by_id)
         self.assertTrue(by_id['grub'].get('secureBoot'))
         self.assertFalse(any(o.get('secureBoot') for o in loaders[1:]))
+        # The boot loader job has an installer for every alternative on the page.
+        job = load_module('corrybootloader', fake_calamares())
+        self.assertEqual(sorted(job.INSTALLERS), sorted(o['id'] for o in loaders[1:]))
 
     def test_profile_choices(self):
         modules = PROFILE / 'modules'
@@ -175,7 +208,10 @@ class BrandingTests(unittest.TestCase):
                 brand = config / 'branding/corry'
                 desc = yaml.safe_load((brand / 'branding.desc').read_text())
                 names.append(desc['strings']['productName'])
-                self.assertEqual(desc['sidebar'], 'qml,top')
+                branding = self.branding()
+                data = branding.load(ROOT / f'config/distros/{distro}')
+                theme = data['theme-data']
+                self.assertEqual(desc['sidebar'], 'qml,' + theme['layout'])
                 self.assertTrue((brand / desc['images']['productWelcome']).is_file())
                 source = yaml.safe_load((ROOT / f'config/distros/{distro}/distro.yaml').read_text())
                 slides = json.loads((brand / 'slides/Slides.js').read_text().split('var slides = ')[1].rstrip(';\n'))
@@ -183,28 +219,36 @@ class BrandingTests(unittest.TestCase):
                 for slide in slides:
                     self.assertTrue((brand / 'slides' / slide['image']).is_file())
                     self.assertTrue(slide['title'].isascii() and slide['description'].isascii())
+                # Images only: no video anywhere in the profile.
                 media = json.loads((brand / 'media.js').read_text().split('var media = ')[1].rstrip(';\n'))
-                self.assertTrue((brand / media['video']).is_file())
+                self.assertEqual(sorted(media), ['poster', 'sound', 'volume'])
+                self.assertTrue((brand / media['poster']).is_file())
                 self.assertTrue((brand / media['sound']).is_file())
-                accent = source['colors']['accent']
-                branding = self.branding()
-                light, dark = branding.shade(accent, 1.45, 1.1), branding.shade(accent, 0.72)
+                self.assertFalse(list(brand.rglob('*.webm')) + list(brand.rglob('CorryVideo*')))
+                self.assertNotIn('video', (brand / 'welcome-media.qml').read_text().lower())
                 version = (ROOT / 'VERSION').read_text().strip()
-                # Every themed file is the source file with the four placeholder
-                # colors and the version replaced, nothing else.
+                values = branding.tokens(data)
+                # Every themed file is its source with the theme tokens and the version
+                # filled in, and no token is left.
                 for themed in branding.THEMED:
-                    expected = (ROOT / 'src/branding/corry' / themed).read_text()
-                    for placeholder, value in [(branding.ACCENT_LIGHT, light), (branding.ACCENT_DARK, dark),
-                                               (branding.ACCENT, accent), (branding.TINT, source['colors']['tint']),
-                                               ('@CORRY_VERSION@', version)]:
-                        expected = expected.replace(placeholder, value)
-                    self.assertEqual((brand / themed).read_text(), expected, themed)
-                    if branding.ACCENT in (ROOT / 'src/branding/corry' / themed).read_text():
-                        self.assertIn(accent, expected, themed)
+                    expected = branding.themed_text((ROOT / 'src/branding/corry' / themed).read_text(), values, themed)
+                    expected = expected.replace('@CORRY_VERSION@', version)
+                    text = (brand / themed).read_text()
+                    self.assertEqual(text, expected, themed)
+                    self.assertIsNone(branding.TOKEN.search(text), themed)
                 stylesheet = (brand / 'stylesheet.qss').read_text()
-                self.assertIn(light, stylesheet)
-                self.assertIn(dark, stylesheet)
-                self.assertIn('Corry ' + version, (brand / 'calamares-sidebar.qml').read_text())
+                for key in ['page', 'accent', 'accent-light', 'accent-dark', 'surface', 'text']:
+                    self.assertIn(data['colors'][key], stylesheet, key)
+                header = (brand / 'calamares-sidebar.qml').read_text()
+                self.assertEqual(header, branding.themed_text(
+                    (ROOT / 'src/branding/corry' / branding.HEADERS[theme['layout']]).read_text(), values,
+                    'header').replace('@CORRY_VERSION@', version))
+                self.assertIn(version, header)
+                for source_header in branding.HEADERS.values():
+                    self.assertFalse((brand / source_header).exists(), source_header)
+                for page in ['corrysystem-init', 'corrysystem-bootloader']:
+                    self.assertEqual(yaml.safe_load((config / f'modules/{page}.conf').read_text())['base'],
+                                     source['debian'], page)
                 self.assertFalse((config / 'modules/packagechooser.conf').exists())
                 grub = yaml.safe_load((config / 'modules/corrygrub.conf').read_text())
                 self.assertEqual(grub['medium'], '/tmp')
@@ -227,6 +271,14 @@ class BrandingTests(unittest.TestCase):
                 for path in ['/etc/calamares', '/usr/bin/corry-installer', '/usr/lib/corry']:
                     self.assertIn(path, manifest)
         self.assertEqual(names, ['Edukasaun OS', 'DebION GNU/Linux'])
+        # The two distributions: Edukasaun on Debian stable with the warm pastel
+        # theme and a side menu; DebION on Debian testing with the soft blue one.
+        branding = self.branding()
+        edukasaun, debion = (branding.load(ROOT / f'config/distros/{d}') for d in DISTROS)
+        self.assertEqual((edukasaun['debian'], edukasaun['theme'], edukasaun['theme-data']['layout']),
+                         ('stable', 'warm-pastel', 'left'))
+        self.assertEqual((debion['debian'], debion['theme'], debion['theme-data']['layout']),
+                         ('testing', 'soft-blue', 'top'))
         with stage('edukasaun', '--autostart') as temp:
             self.assertIn('Exec=corry-installer', (Path(temp) / 'etc/xdg/autostart/corry-installer.desktop').read_text())
 
@@ -348,19 +400,58 @@ esac
             self.assertEqual(len(branding.load(folder)['slides']), len(data['slides']))
             for change, message in [
                 (lambda d: d.update(slides=d['slides'][:4]), 'at least 5'),
-                (lambda d: d['colors'].update(accent='green'), 'colors.accent'),
+                (lambda d: d.update(colors={'accent': 'green'}), 'colors.accent'),
+                (lambda d: d.update(colors={'acent': '#123456'}), 'not a theme color'),
+                (lambda d: d.update(theme='neon'), 'Unknown theme'),
+                (lambda d: d.update(debian='sid'), 'Debian base'),
+                (lambda d: d.pop('debian'), 'Debian base'),
                 (lambda d: d['slides'][0].update(image='../escape.svg'), 'inside'),
-                (lambda d: d['welcome'].update(video='media/missing.webm'), 'not found'),
+                (lambda d: d['welcome'].update(image='slides/missing.png'), 'not found'),
                 (lambda d: d['sound'].update(volume=3), 'volume')]:
                 broken = json.loads(json.dumps(data))
                 change(broken)
                 (folder / 'distro.yaml').write_text(yaml.safe_dump(broken))
                 with self.assertRaisesRegex(branding.BrandingError, message):
                     branding.load(folder)
-            data['welcome']['video'] = ''
             data['sound']['file'] = ''
             (folder / 'distro.yaml').write_text(yaml.safe_dump(data))
-            self.assertEqual(branding.load(folder)['welcome']['video'], '')
+            self.assertEqual(branding.load(folder)['sound']['file'], '')
+            # A video from an older distro.yaml is ignored with a note, not an error.
+            data['welcome']['video'] = 'media/welcome.webm'
+            (folder / 'distro.yaml').write_text(yaml.safe_dump(data))
+            loaded = branding.load(folder)
+            self.assertNotIn('video', loaded['welcome'])
+            self.assertTrue(any('welcome.video' in w for w in branding.media_warnings(folder, loaded)))
+
+    def test_themes(self):
+        branding = self.branding()
+        themes = sorted(p.stem for p in branding.THEMES.glob('*.yaml'))
+        self.assertEqual(themes, ['soft-blue', 'warm-pastel'])
+        used = set()
+        for name in [*branding.THEMED, *branding.HEADERS.values()]:
+            used |= set(branding.TOKEN.findall((ROOT / 'src/branding/corry' / name).read_text()))
+        for name in themes:
+            theme = branding.load_theme(name)
+            self.assertEqual(set(theme['colors']), set(branding.THEME_COLORS), name)
+            self.assertTrue(theme['font'], name)
+            # Every token the sources use exists for every theme.
+            values = branding.tokens({'theme-data': theme, 'colors': theme['colors']})
+            self.assertEqual(used - set(values), set(), name)
+            # Readable text: at least 4.5:1 for body text on the surfaces.
+            def luminance(color):
+                channel = lambda c: c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+                r, g, b = (channel(int(color[i:i + 2], 16) / 255) for i in (1, 3, 5))
+                return 0.2126 * r + 0.7152 * g + 0.0722 * b
+            def contrast(a, b):
+                la, lb = sorted([luminance(a), luminance(b)], reverse=True)
+                return (la + 0.05) / (lb + 0.05)
+            colors = theme['colors']
+            for text, background in [('text', 'surface'), ('text', 'page'), ('nav-text', 'nav'),
+                                     ('warning-text', 'warning-bg'), ('danger-text', 'danger-bg')]:
+                self.assertGreaterEqual(contrast(colors[text], colors[background]), 4.5, (name, text, background))
+            self.assertGreaterEqual(contrast(colors['on-accent'], colors['accent-dark']), 3.0, name)
+        with self.assertRaisesRegex(branding.BrandingError, 'unknown theme token'):
+            branding.themed_text('color: "@nope@"', {}, 'test')
 
     def test_derived_accent_shades(self):
         branding = self.branding()
@@ -375,6 +466,13 @@ esac
             folder = Path(temp) / 'mine'
             shutil.copytree(ROOT / 'config/distros/debion', folder)
             data = yaml.safe_load((folder / 'distro.yaml').read_text())
+            theme = branding.load_theme(data['theme'])
+            self.assertEqual(branding.load(folder)['colors'], theme['colors'])
+            data['colors'] = {'accent': '#246452'}
+            (folder / 'distro.yaml').write_text(yaml.safe_dump(data))
+            colors = branding.load(folder)['colors']
+            self.assertEqual(colors['accent-light'], branding.shade('#246452', 1.45, 1.1))
+            self.assertEqual(colors['accent-dark'], branding.shade('#246452', 0.72))
             data['colors']['accent-light'] = '#abcdef'
             (folder / 'distro.yaml').write_text(yaml.safe_dump(data))
             self.assertEqual(branding.load(folder)['colors']['accent-light'], '#abcdef')
@@ -405,12 +503,14 @@ esac
     def test_new_distro_tool(self):
         with tempfile.TemporaryDirectory() as temp:
             repo = Path(temp) / 'repo'
-            for part in ['tools', 'config/distros/debion']:
+            for part in ['tools', 'config/distros/debion', 'config/themes']:
                 shutil.copytree(ROOT / part, repo / part)
             subprocess.run([sys.executable, str(repo / 'tools/new-distro.py'), 'demo-os', 'Demo OS',
-                            '--accent', '#123456', '--no-media'], check=True, stdout=subprocess.PIPE)
+                            '--accent', '#123456', '--theme', 'warm-pastel', '--debian', 'stable', '--no-media'],
+                           check=True, stdout=subprocess.PIPE)
             data = yaml.safe_load((repo / 'config/distros/demo-os/distro.yaml').read_text())
             self.assertEqual((data['name'], data['colors']['accent']), ('Demo OS', '#123456'))
+            self.assertEqual((data['theme'], data['debian']), ('warm-pastel', 'stable'))
             self.assertEqual(data['slides'][0]['title'], 'Welcome to Demo OS')
 
     def test_debian_base_detection(self):
@@ -440,7 +540,7 @@ class CleanupTests(unittest.TestCase):
     def test_cleanup_purges_live_and_installer_packages(self):
         calls = []
 
-        def call(args):
+        def call(args, *rest):
             calls.append(args)
             if args[0] == 'dpkg-query':
                 return 0 if args[-1] in ('live-config', 'calamares') else 1
@@ -453,11 +553,31 @@ class CleanupTests(unittest.TestCase):
         self.assertIn(['userdel', '--', 'user'], calls)
         self.assertFalse(any('--remove' in args or '-r' in args for args in calls))
 
+    def test_cleanup_never_fails_when_dpkg_refuses(self):
+        # A live meta-package depends on live-config: dpkg refuses the set and that
+        # one package, the others are purged one by one; the installation goes on.
+        calls = []
+
+        def call(args, *rest):
+            calls.append(args)
+            if args[0] == 'dpkg-query':
+                return 0 if args[-1] in ('live-config', 'live-boot', 'calamares') else 1
+            if args[:2] == ['dpkg', '--purge']:
+                return 1 if 'live-config' in args else 0
+            return 0
+        with tempfile.TemporaryDirectory() as temp:
+            fake = fake_calamares({'rootMountPoint': temp, 'username': 'hugo'}, {}, call)
+            self.assertIsNone(load_module('corrycleanup', fake).run())
+        self.assertIn(['dpkg', '--purge', 'live-boot'], calls)
+        self.assertIn(['dpkg', '--purge', 'calamares'], calls)
+        self.assertFalse(any('apt-get' in args for args in calls))
+        self.assertTrue(any('live-config stay installed' in w for w in fake.log.warnings), fake.log.warnings)
+
     def test_cleanup_keeps_new_user_named_like_live_user(self):
         calls = []
         with tempfile.TemporaryDirectory() as temp:
             fake = fake_calamares({'rootMountPoint': temp, 'username': 'user'}, {'liveUser': 'user'},
-                                  lambda args: calls.append(args) or (1 if args[0] == 'dpkg-query' else 0))
+                                  lambda args, *rest: calls.append(args) or (1 if args[0] == 'dpkg-query' else 0))
             self.assertIsNone(load_module('corrycleanup', fake).run())
         self.assertFalse(any(args[0] == 'userdel' for args in calls))
 
@@ -477,15 +597,17 @@ class CleanupTests(unittest.TestCase):
                 '/usr/lib/x86_64-linux-gnu/libcalamares.so.3.3.15\n/usr/share/applications\n/etc/calamares\n')
             fake = fake_calamares({'rootMountPoint': temp, 'username': 'hugo'},
                                   {'liveUser': 'user', 'removeFiles': ['opt/live-only']},
-                                  lambda args: 1 if args[0] in ('dpkg-query', 'id') else 0)
+                                  lambda args, *rest: 1 if args[0] in ('dpkg-query', 'id') else 0)
             self.assertIsNone(load_module('corrycleanup', fake).run())
             self.assertEqual([p for p in corry if (root / p).exists()], [])
             for directory in ['etc/calamares', 'usr/lib/corry', 'usr/share/calamares']:
                 self.assertFalse((root / directory).exists(), directory)
             self.assertTrue(all((root / p).exists() for p in keep))
             self.assertTrue((root / 'usr/share/applications').is_dir())
+            # An unsafe path is refused and reported; it never stops the installation.
             fake.job.configuration['removeFiles'] = ['../outside']
-            self.assertIsNotNone(load_module('corrycleanup', fake).run())
+            self.assertIsNone(load_module('corrycleanup', fake).run())
+            self.assertTrue(any('Unsafe path' in w for w in fake.log.warnings), fake.log.warnings)
 
 
 class GrubTests(unittest.TestCase):
@@ -552,8 +674,11 @@ class UpdateTests(unittest.TestCase):
     def run_update(self, online, failing=()):
         calls = []
 
+        self.timeouts = {}
+
         def call(args, stdin='', timeout=0):
             calls.append(args[2:])
+            self.timeouts[' '.join(args[2:5])] = timeout
             return 1 if any(word in args for word in failing) else 0
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -580,12 +705,19 @@ class UpdateTests(unittest.TestCase):
         commands = [c[:2] for c in calls]
         self.assertIn(['apt-get', 'update'], commands)
         self.assertIn(['apt-get', '--fix-broken'], commands)
-        self.assertIn(['apt-get', 'upgrade'], commands)
-        self.assertNotIn(['apt-get', 'full-upgrade'], commands)
+        # Downloaded first (safe to interrupt), then installed without a time limit.
+        download = next(c for c in calls if '--download-only' in c)
+        install = next(c for c in calls if '--no-download' in c and 'upgrade' in c)
+        self.assertIn('upgrade', download)
+        self.assertLess(calls.index(download), calls.index(install))
+        # dpkg is never killed half-way: no time limit once packages are installed.
+        self.assertEqual(self.timeouts[' '.join(install[:3])], 0)
+        self.assertGreater(self.timeouts[' '.join(download[:3])], 0)
+        self.assertFalse(any('full-upgrade' in c for c in calls))
 
     def test_network_problems_never_fail_installation(self):
         calls, warnings = self.run_update(True, failing=('update',))
-        self.assertFalse(any(c[:2] == ['apt-get', 'upgrade'] for c in calls))
+        self.assertFalse(any('upgrade' in c for c in calls))
         self.assertTrue(warnings)
 
 
@@ -593,8 +725,9 @@ class InitTests(unittest.TestCase):
     """corryinit: switch the init system only when apt removes nothing but systemd."""
 
     def setup(self, wanted='sysvinit', online=True, removed='systemd-sysv libpam-systemd', install_code=0,
-              owner='sysvinit-core', purge_extra='', configuration=None):
+              owner='sysvinit-core', purge_extra='', configuration=None, download_code=0):
         calls = []
+        self.timeouts = []
         system = {'init': {'id': wanted, 'name': wanted, 'default': wanted == 'systemd',
                            'packages': [] if wanted == 'systemd' else
                            {'sysvinit': ['sysvinit-core', 'elogind', 'libpam-elogind'],
@@ -602,8 +735,9 @@ class InitTests(unittest.TestCase):
 
         def call(args, stdin='', timeout=0):
             calls.append(args)
+            self.timeouts.append((args, timeout))
             if 'install' in args and '-s' not in args and 'apt-get' in args:
-                return install_code
+                return download_code if '--download-only' in args else install_code
             return 0
 
         def process_output(args, callback=None, stdin='', timeout=0):
@@ -686,11 +820,16 @@ class InitTests(unittest.TestCase):
     def test_switch_then_retire_systemd(self):
         result, calls, fake = self.setup()
         self.assertIsNone(result)
-        installs = [c for c in calls if 'apt-get' in c and 'install' in c and '-s' not in c]
-        # The new packages, plus explicit removal of the installed systemd packages
-        # (apt keeps manually installed packages unless asked).
+        # The packages are downloaded first; then the switch installs them, with
+        # explicit removal of the installed systemd packages (apt keeps manually
+        # installed packages unless asked), and no time limit.
+        downloads = [c for c in calls if 'apt-get' in c and '--download-only' in c]
+        self.assertEqual(downloads[0][downloads[0].index('install') + 1:], ['sysvinit-core', 'elogind', 'libpam-elogind'])
+        installs = [c for c in calls if 'apt-get' in c and 'install' in c and '--no-download' in c]
         self.assertEqual(installs[0][installs[0].index('install') + 1:],
                          ['sysvinit-core', 'elogind', 'libpam-elogind', 'systemd-sysv-', 'libpam-systemd-', 'systemd-'])
+        self.assertIn((installs[0], 0), self.timeouts)
+        self.assertLess(calls.index(downloads[0]), calls.index(installs[0]))
         simulations = [c for c in calls if 'apt-get' in c and '-s' in c and 'install' in c]
         self.assertEqual(simulations[0][simulations[0].index('install') + 1:], installs[0][installs[0].index('install') + 1:])
         purges = [c for c in calls if 'apt-get' in c and 'purge' in c and '-s' not in c]
@@ -717,6 +856,20 @@ class InitTests(unittest.TestCase):
         self.assertIn('keeps systemd', fake.log.warnings[-1])
         self.assertEqual(fake.values['corrySystem']['init']['installed'], 'systemd')
         self.assertFalse(any('purge' in c for c in calls))
+
+    def test_failed_download_changes_nothing(self):
+        result, calls, fake = self.setup(download_code=1)
+        self.assertIsNone(result)
+        self.assertFalse(any('--no-download' in c for c in calls))
+        self.assertIn('could not be downloaded', fake.log.warnings[-1])
+        self.assertEqual(fake.values['corrySystem']['init']['installed'], 'systemd')
+
+    def test_unexpected_error_keeps_systemd(self):
+        # removed=None makes the apt simulation fake raise inside the job.
+        result, calls, fake = self.setup(removed=None, owner='systemd-sysv')
+        self.assertIsNone(result)
+        self.assertTrue(any('unexpected AttributeError' in w for w in fake.log.warnings), fake.log.warnings)
+        self.assertEqual(fake.values['corrySystem']['init']['installed'], 'systemd')
 
     def test_wrong_init_owner_is_reported(self):
         result, calls, fake = self.setup(owner='systemd-sysv')
@@ -780,27 +933,31 @@ class BootLoaderTests(unittest.TestCase):
             (root / 'boot/efi/EFI/BOOT/BOOTX64.EFI').write_bytes(b'GRUB fallback')
         return root
 
-    def partitions(self, efi=True, fs='btrfs', separate_boot=False):
+    def partitions(self, efi=True, fs='btrfs', separate_boot=False, esp_claimed=True):
         parts = [{'device': '/dev/sda2', 'fs': fs, 'mountPoint': '/', 'uuid': 'root-uuid'},
                  {'device': '/dev/sda3', 'fs': 'linuxswap', 'mountPoint': '', 'uuid': 'swap-uuid', 'claimed': True}]
         if efi:
-            parts.insert(0, {'device': '/dev/sda1', 'fs': 'fat32', 'mountPoint': '/boot/efi', 'uuid': 'ESP1-2345'})
+            parts.insert(0, {'device': '/dev/sda1', 'fs': 'fat32', 'mountPoint': '/boot/efi', 'uuid': 'ESP1-2345',
+                             'partuuid': 'esp-partuuid', 'claimed': esp_claimed})
         if separate_boot:
             parts.append({'device': '/dev/sda4', 'fs': 'ext4', 'mountPoint': '/boot', 'uuid': 'boot-uuid'})
         return parts
 
     def setup(self, temp, loader='systemd-boot', firmware='efi', fs='btrfs', online=True, bootctl_code=0,
-              kernel_install=False, separate_boot=False, packages=None):
+              kernel_install=False, separate_boot=False, packages=None, esp_claimed=True, extra=None,
+              parted_listing='', partitions=None):
         root = self.make_root(temp, efi=firmware == 'efi')
         hosts = []
         calls = []
         system = {'bootloader': {'id': loader, 'name': loader, 'default': loader == 'grub',
                                  'packages': packages if packages is not None else
                                  {'grub': [], 'systemd-boot': ['systemd-boot'], 'refind': ['refind'],
-                                  'extlinux': ['extlinux', 'syslinux-common'], 'uboot': ['u-boot-menu']}[loader]}}
+                                  'extlinux': ['extlinux', 'syslinux-common']}[loader]}}
         values = {'rootMountPoint': temp, 'corrySystem': system, 'firmwareType': firmware,
-                  'efiSystemPartition': '/boot/efi', 'partitions': self.partitions(firmware == 'efi', fs, separate_boot),
+                  'efiSystemPartition': '/boot/efi',
+                  'partitions': partitions or self.partitions(firmware == 'efi', fs, separate_boot, esp_claimed),
                   'btrfsRootSubvolume': '@' if fs == 'btrfs' else '', 'branding': {'bootloaderEntryName': 'Edukasaun OS'}}
+        values.update(extra or {})
 
         def call(args, stdin='', timeout=0):
             calls.append(args)
@@ -820,10 +977,6 @@ class BootLoaderTests(unittest.TestCase):
             if args[0] == 'extlinux':
                 (root / 'boot/extlinux/ldlinux.sys').write_text('x')
                 return 0
-            if args[0] == 'u-boot-update':
-                (root / 'boot/extlinux').mkdir(parents=True, exist_ok=True)
-                (root / 'boot/extlinux/extlinux.conf').write_text('# u-boot-menu\n')
-                return 0
             return 0
 
         def process_output(args, callback=None, stdin='', timeout=0):
@@ -839,8 +992,13 @@ class BootLoaderTests(unittest.TestCase):
             hosts.append(args)
             stdout = 'gpt\n' if args[0] == 'blkid' and firmware == 'efi' else 'dos\n' if args[0] == 'blkid' else ''
             if args[0] == 'efibootmgr' and '-v' in args:
-                stdout = ('BootOrder: 0001,0002\nBoot0001* debian\tHD(1,GPT,x)/File(\\EFI\\debian\\shimx64.efi)\n'
-                          'Boot0002* Windows Boot Manager\tHD(1,GPT,x)/File(\\EFI\\Microsoft\\Boot\\bootmgfw.efi)\n')
+                # Our ESP holds GRUB's entry and Windows; another disk has its own Debian.
+                stdout = ('BootOrder: 0001,0002,0003\n'
+                          'Boot0001* debian\tHD(1,GPT,esp-partuuid,0x800,0x96000)/File(\\EFI\\debian\\shimx64.efi)\n'
+                          'Boot0002* Windows Boot Manager\tHD(1,GPT,esp-partuuid,0x800,0x96000)/File(\\EFI\\Microsoft\\Boot\\bootmgfw.efi)\n'
+                          'Boot0003* debian\tHD(1,GPT,other-disk,0x800,0x96000)/File(\\EFI\\debian\\shimx64.efi)\n')
+            if args[0] == 'parted' and '-m' in args:
+                stdout = parted_listing
             return types.SimpleNamespace(returncode=0, stdout=stdout)
         fake = fake_calamares(values, yaml.safe_load((PROFILE / 'modules/corrybootloader.conf').read_text()), call,
                               process_output)
@@ -897,7 +1055,8 @@ class BootLoaderTests(unittest.TestCase):
             for hook in ['etc/kernel/postinst.d/zz-corry-systemd-boot', 'etc/initramfs/post-update.d/zz-corry-systemd-boot',
                          'etc/kernel/postrm.d/zz-corry-systemd-boot']:
                 self.assertTrue(os.access(root / hook, os.X_OK), hook)
-            # GRUB is gone: packages purged, files and its EFI directory and NVRAM entry removed.
+            # GRUB is gone: packages purged, files and, on this installation's freshly
+            # formatted EFI partition, its EFI directory and its own NVRAM entry.
             purges = [c for c in calls if 'apt-get' in c and 'purge' in c]
             self.assertEqual(len(purges), 1)
             self.assertEqual(sorted(purges[0][purges[0].index('purge') + 1:]),
@@ -908,8 +1067,86 @@ class BootLoaderTests(unittest.TestCase):
             self.assertTrue((esp / 'EFI/BOOT/BOOTX64.EFI').exists())  # systemd-boot's own copy stays
             self.assertIn(['efibootmgr', '-b', '0001', '-B'], hosts)
             self.assertFalse(any(h[:3] == ['efibootmgr', '-b', '0002'] for h in hosts))  # Windows stays
+            self.assertFalse(any(h[:3] == ['efibootmgr', '-b', '0003'] for h in hosts))  # another disk's Debian stays
             self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'systemd-boot')
             self.assertIn('GRUB removed', fake.values['corrySystem']['bootloader']['message'])
+
+    def test_reused_efi_partition_keeps_other_systems(self):
+        # Installed next to another Debian on its EFI partition: EFI/debian is that
+        # system's (GRUB is not written to the ESP before this job), so it stays.
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'systemd-boot', esp_claimed=False)
+            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'systemd-boot')
+            self.assertTrue((root / 'boot/efi/EFI/debian/grubx64.efi').exists())
+            self.assertFalse(any(h[:2] == ['efibootmgr', '-b'] for h in hosts))
+            self.assertFalse((root / 'boot/grub').exists())  # the target's own GRUB files are removed
+            self.assertTrue(any('apt-get' in c and 'purge' in c for c in calls))
+
+    def assert_falls_back(self, fake, calls, words):
+        self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'grub')
+        self.assertIn(words, fake.log.warnings[-1])
+        self.assertIn('GRUB is installed instead', fake.log.warnings[-1])
+        self.assertFalse(any('apt-get' in c for c in calls), calls)  # checked before anything is downloaded
+
+    def test_unsuitable_layouts_keep_grub(self):
+        encrypted = self.partitions(fs='ext4')
+        encrypted[1]['luksMapperName'] = 'luks-root'
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'refind', partitions=encrypted)
+            self.assert_falls_back(fake, calls, 'encrypted /boot')
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'refind', fs='xfs')
+            self.assert_falls_back(fake, calls, 'cannot read a xfs /boot')
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'extlinux', firmware='bios', fs='btrfs')
+            self.assert_falls_back(fake, calls, 'cannot read a btrfs /boot')
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(
+                temp, 'extlinux', firmware='bios', fs='ext4',
+                extra={'osproberLines': ['/dev/sda1:Windows 10:Windows:chain']})
+            self.assert_falls_back(fake, calls, 'another operating system (Windows 10)')
+        logical = self.partitions(efi=False, fs='ext4')
+        logical[0]['device'] = '/dev/sda5'
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(temp, 'extlinux', firmware='bios', partitions=logical)
+            self.assert_falls_back(fake, calls, 'logical partition')
+        with tempfile.TemporaryDirectory() as temp:
+            result, calls, hosts, fake, root = self.setup(
+                temp, 'extlinux', firmware='bios', fs='ext4',
+                parted_listing='BYT;\n/dev/sda:100GB:scsi:512:512:msdos:Disk:;\n1:1MB:500MB:499MB:ntfs::boot;\n'
+                               '2:500MB:90GB:89GB:ext4::;\n')
+            self.assert_falls_back(fake, calls, 'partition 1 of /dev/sda is the active')
+
+    def test_unexpected_error_restores_grub(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_root(temp)
+            values = {'rootMountPoint': temp, 'firmwareType': 'efi', 'efiSystemPartition': '/boot/efi',
+                      'partitions': self.partitions(fs='ext4'),
+                      'corrySystem': {'bootloader': {'id': 'refind', 'name': 'rEFInd', 'packages': ['refind']}}}
+            calls = []
+            purged = set()
+
+            def call(args, stdin='', timeout=0):
+                calls.append(args)
+                if 'purge' in args:
+                    purged.update(args[args.index('purge') + 1:])
+                    if 'grub-common' in args:
+                        raise RuntimeError('unexpected')  # after GRUB's packages are gone
+                return 0
+
+            def output(args, *rest):
+                if args[0] == 'dpkg-query':
+                    return 'un ' if args[-1] in purged else 'ii '
+                return 'amd64\n' if args[0] == 'dpkg' else ''
+            fake = fake_calamares(values, {}, call, output)
+            module = load_module('corrybootloader', fake)
+            with patch.object(module, 'online', return_value=True), \
+                    patch.object(module, 'host', return_value=types.SimpleNamespace(returncode=0, stdout='')):
+                self.assertIsNone(module.run())
+            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'grub')
+            self.assertIn('unexpected RuntimeError', fake.log.warnings[-1])
+            restore = [c for c in calls if 'install' in c and 'grub-common' in c]
+            self.assertTrue(restore, calls)
 
     def test_systemd_boot_with_kernel_install(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -961,7 +1198,7 @@ class BootLoaderTests(unittest.TestCase):
             conf = (root / 'boot/refind_linux.conf').read_text().splitlines()
             self.assertEqual(conf[0], '"Boot with standard options"  "quiet root=UUID=root-uuid resume=UUID=swap-uuid rw"')
             self.assertIn('single', conf[1])
-            self.assertIn('ro root=UUID=root-uuid', conf[2])
+            self.assertEqual(conf[2], '"Boot with minimal options"   "ro root=UUID=root-uuid"')
             self.assertTrue(any(h[:2] == ['efibootmgr', '-c'] and 'rEFInd Boot Manager' in h for h in hosts))
             self.assertFalse((esp / 'EFI/debian').exists())
             preseed = [c for c in calls if c[0] == 'sh' and 'debconf-set-selections' in c[-1]]
@@ -994,14 +1231,11 @@ class BootLoaderTests(unittest.TestCase):
             self.assertIn('rootflags=subvol=@', conf)
             self.assertIn(['parted', '-s', '/dev/sda', 'set', '4', 'boot', 'on'], hosts)
 
-    def test_uboot_menu(self):
+    def test_refind_minimal_entry_keeps_the_btrfs_subvolume(self):
         with tempfile.TemporaryDirectory() as temp:
-            result, calls, hosts, fake, root = self.setup(temp, 'uboot', firmware='bios', fs='ext4')
-            defaults = (root / 'etc/default/u-boot').read_text()
-            self.assertIn('U_BOOT_ROOT="root=UUID=root-uuid"', defaults)
-            self.assertIn('U_BOOT_PARAMETERS="quiet resume=UUID=swap-uuid rw"', defaults)
-            self.assertIn(['u-boot-update'], calls)
-            self.assertEqual(fake.values['corrySystem']['bootloader']['id'], 'uboot')
+            result, calls, hosts, fake, root = self.setup(temp, 'refind', fs='btrfs')
+            conf = (root / 'boot/refind_linux.conf').read_text().splitlines()
+            self.assertEqual(conf[2], '"Boot with minimal options"   "ro root=UUID=root-uuid rootflags=subvol=@"')
 
     def test_helpers(self):
         module = load_module('corrybootloader', fake_calamares())

@@ -144,6 +144,7 @@ SummaryPage::buildWidgets( Config* config, SummaryViewStep* viewstep )
 
     const auto* model = config->summaryModel();
     const auto rowCount = model->rowCount();
+    int corryCards = 0;
 
     for ( int row = 0; row < rowCount; row++ )
     {
@@ -167,6 +168,8 @@ SummaryPage::buildWidgets( Config* config, SummaryViewStep* viewstep )
             // One card per section: name on the left, details on the right.
             auto* card = new QFrame;
             card->setObjectName( "corryCard" );
+            // Sections take the theme's tones in turn (mint, salmon, yellow, blue in warm-pastel).
+            card->setProperty( "tone", QString::number( 1 + ( corryCards++ % 4 ) ) );
             auto* row = new QHBoxLayout( card );
             row->setContentsMargins( 20, 14, 20, 14 );
             row->setSpacing( 18 );

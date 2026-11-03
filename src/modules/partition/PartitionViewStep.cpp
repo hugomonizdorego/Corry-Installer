@@ -36,6 +36,7 @@
 
 #include <kpmcore/core/device.h>
 #include <kpmcore/core/partition.h>
+#include <kpmcore/fs/luks.h>
 
 #include <QFormLayout>
 #include <QMessageBox>
@@ -679,9 +680,44 @@ checkForFilesystemConflicts( PartitionCoreModule* core )
     return result;
 }
 
+/** @brief Corry: the planned / and /boot, for the Boot loader page.
+ *
+ * Global storage "partitions" is only filled when the installation runs, so
+ * the pages after this one read this preview instead.
+ */
+static void
+publishPlannedLayout( const PartitionCoreModule* core )
+{
+    QVariantList planned;
+    for ( const auto& mountPoint : { QStringLiteral( "/" ), QStringLiteral( "/boot" ) } )
+    {
+        Partition* partition = core->findPartitionByMountPoint( mountPoint );
+        if ( !partition )
+        {
+            continue;
+        }
+        FileSystem* fs = &partition->fileSystem();
+        bool encrypted = false;
+        if ( auto* luks = dynamic_cast< FS::luks* >( fs ) )  // FS::luks2 derives from FS::luks.
+        {
+            encrypted = true;
+            if ( luks->innerFS() )
+            {
+                fs = luks->innerFS();
+            }
+        }
+        planned.append( QVariantMap { { QStringLiteral( "mountPoint" ), mountPoint },
+                                      { QStringLiteral( "fs" ), Calamares::Partition::untranslatedFS( *fs ) },
+                                      { QStringLiteral( "encrypted" ), encrypted },
+                                      { QStringLiteral( "device" ), partition->partitionPath() } } );
+    }
+    Calamares::JobQueue::instance()->globalStorage()->insert( QStringLiteral( "corryPlannedPartitions" ), planned );
+}
+
 void
 PartitionViewStep::onLeave()
 {
+    publishPlannedLayout( m_core );
     if ( m_widget->currentWidget() == m_choicePage )
     {
         m_choicePage->onLeave();

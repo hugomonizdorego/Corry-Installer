@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: CC0-1.0
+# Corry theme "warm-pastel": a warm cream page, a mint sidebar with the steps
+# as a menu of colored tiles, a salmon welcome card, coral main buttons and
+# pastel mint, salmon, yellow and blue sections. Used by Edukasaun OS.
+# A distribution's distro.yaml selects a theme with "theme:" and may override
+# any color below in its own "colors:" block.
+name: Warm pastel
+layout: left
+font: [Plus Jakarta Sans, Nunito, Quicksand, Noto Sans, DejaVu Sans]
+radius: 26
+colors:
+  page: '#fbf5ee'
+  surface: '#fffdf9'
+  surface-alt: '#f7efe6'
+  border: '#efe2d4'
+  text: '#3b2f28'
+  text-muted: '#7a685d'
+  text-faint: '#ab9a8e'
+  accent: '#e2704f'
+  accent-light: '#f29b7d'
+  accent-dark: '#c65a3b'
+  on-accent: '#ffffff'
+  tint: '#fbe2d8'
+  shadow: '#dcc8b6'
+  highlight: transparent
+  nav: '#dcebe4'
+  nav-text: '#33443e'
+  nav-active: '#ffffff'
+  hero: '#f9dccf'
+  tone-1: '#e2efe9'        # mint
+  tone-2: '#fadcd2'        # salmon
+  tone-3: '#fcedc9'        # yellow
+  tone-4: '#dfe8f5'        # blue
+  mark-1: '#4f8c80'        # teal
+  mark-2: '#ea7a5c'        # coral
+  mark-3: '#f2b13d'        # amber
+  mark-4: '#6b9bd6'        # blue
+  warning-bg: '#fcefcf'
+  warning-text: '#8a5300'
+  danger-bg: '#fbdcd5'
+  danger-text: '#a3341d'
+  success: '#4f8c80'
