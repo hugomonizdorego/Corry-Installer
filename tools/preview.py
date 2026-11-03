@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Safe Corry design preview. Sample disks only; no installer or disk operations.
-Requires PySide6. Shares the production QSS, artwork, header and slideshow QML.
+Requires PySide6. Shares the production QSS, artwork, header (or side menu) and
+slideshow QML, themed exactly as tools/install-profile.sh themes them. The real
+installer cannot list disks in a container, so the partition pages in
+docs/screenshots come from here; every other page is captured from the real
+build by tools/screenshots/capture.sh.
 """
 import argparse
 import os
@@ -22,12 +26,14 @@ from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
 ROOT = Path(__file__).resolve().parents[1]
 BRAND = ROOT / 'src/branding/corry'
 PRODUCT = 'DebION GNU/Linux'
-ACCENT = '#6445a4'
-TINT = '#f0ecf8'
-MUTED = '#64748b'
+# The theme's colors and layout (set in main() from the distribution's theme).
+COLORS = {}
+ACCENT = MUTED = ''
+LAYOUT = 'top'
 # The step labels Calamares shows for the Corry sequence in settings.conf.
-STEPS = ['Welcome', 'System check', 'Location', 'Keyboard', 'Partitions', 'Users', 'System', 'Summary', 'Install', 'Finish']
-WELCOME, CHECK, LOCATION, KEYBOARD, PARTITIONS, USERS, SYSTEM, SUMMARY, INSTALL, FINISH = range(len(STEPS))
+STEPS = ['Welcome', 'System check', 'Location', 'Keyboard', 'Partitions', 'Users', 'Init system', 'Boot loader',
+         'Summary', 'Install', 'Finish']
+WELCOME, CHECK, LOCATION, KEYBOARD, PARTITIONS, USERS, INIT, LOADER, SUMMARY, INSTALL, FINISH = range(len(STEPS))
 
 
 class Steps(QAbstractListModel):
@@ -62,7 +68,7 @@ class Brand(QObject):
 
     @Slot(int, result=str)
     def styleString(self, value):
-        return ACCENT if value == 2 else TINT
+        return COLORS['accent'] if value == 2 else COLORS['tint']
 
     @Slot(result=str)
     def shortProductName(self):
@@ -100,11 +106,11 @@ class SoftCard(QFrame):
         for i in range(steps, 0, -1):
             spread = 18 * i / steps
             fade = (steps + 1 - i) / steps
-            color = QColor(43, 74, 122)
-            color.setAlphaF(0.017 * fade * fade)
+            color = QColor(COLORS['shadow'])
+            color.setAlphaF(0.08 * fade * fade)
             painter.setBrush(color)
             painter.drawRoundedRect(card.translated(0, 8).adjusted(-spread, -spread, spread, spread), 22 + spread, 22 + spread)
-        painter.setBrush(QColor('#ffffff'))
+        painter.setBrush(QColor(COLORS['surface']))
         painter.drawRoundedRect(card, 22, 22)
 
 
@@ -136,7 +142,7 @@ class Preview(QWidget):
         super().__init__()
         self.setObjectName('mainApp')
         self.setWindowTitle('Corry Installer — Design preview')
-        self.resize(1120, 780)
+        self.resize(*WINDOW)
         self.setMinimumSize(960, 720)
         self.rows = [['/dev/vda1', '300 MiB', 'FAT32', '/boot/efi', 'Keep'],
                      ['/dev/vda2', '72 GiB', 'Btrfs', '/', 'Format'],
@@ -145,11 +151,15 @@ class Preview(QWidget):
         self.steps = Steps()
         self.brand = Brand()
         self.debug = Debug()
-        outer = QVBoxLayout(self)
+        # The theme's layout: a header on top, or a menu of steps on the left.
+        outer = QHBoxLayout(self) if LAYOUT == 'left' else QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         self.header = QQuickWidget()
-        self.header.setFixedHeight(118)
+        if LAYOUT == 'left':
+            self.header.setFixedWidth(248)
+        else:
+            self.header.setFixedHeight(118)
         self.header.setResizeMode(QQuickWidget.SizeRootObjectToView)
         ctx = self.header.rootContext()
         ctx.setContextProperty('ViewManager', self.steps)
@@ -350,6 +360,12 @@ class Preview(QWidget):
         cl.addWidget(QCheckBox('Log in automatically without asking for the password'))
         self.layout.addWidget(box)
         self.validate_password()
+
+    def page_init_system(self):
+        self.page_system()
+
+    def page_boot_loader(self):
+        self.page_system()
 
     def page_system(self):
         self.title('System components', 'Choose the init system and the boot loader of the new system. The defaults are '
@@ -553,22 +569,25 @@ class Preview(QWidget):
             self.fill_tree()
 
 
-def themed(path):
+def themed(path, values, version):
+    """The branding source with the theme tokens and the version filled in."""
+    path.write_text(BRANDING.themed_text(path.read_text(), values, path.name).replace('@CORRY_VERSION@', version))
+
+
+def load_branding():
     import importlib.util
     spec = importlib.util.spec_from_file_location('corry_branding', ROOT / 'tools/corry-branding.py')
-    branding = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(branding)
-    version = (ROOT / 'VERSION').read_text().strip()
-    text = path.read_text()
-    for placeholder, value in [(branding.ACCENT_LIGHT, branding.shade(ACCENT, 1.45, 1.1)),
-                               (branding.ACCENT_DARK, branding.shade(ACCENT, 0.72)), (branding.ACCENT, ACCENT),
-                               (branding.TINT, TINT), ('@CORRY_VERSION@', version)]:
-        text = text.replace(placeholder, value)
-    path.write_text(text)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+BRANDING = load_branding()
+WINDOW = (1120, 780)
 
 
 def main():
-    global BRAND, PRODUCT, ACCENT, TINT
+    global BRAND, PRODUCT, COLORS, ACCENT, MUTED, LAYOUT, WINDOW
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--screenshots', type=Path)
     parser.add_argument('--distro', choices=['edukasaun', 'debion'], default='debion')
@@ -579,17 +598,22 @@ def main():
         overlay = ROOT / 'config/distros' / args.distro
         shutil.rmtree(BRAND / 'slides')
         shutil.copytree(overlay / 'slides', BRAND / 'slides')
-        profile = yaml.safe_load((overlay / 'distro.yaml').read_text())
-        PRODUCT, ACCENT, TINT = profile['short-name'], profile['colors']['accent'], profile['colors']['tint']
+        profile = BRANDING.load(overlay)
+        PRODUCT, COLORS, LAYOUT = profile['short-name'], profile['colors'], profile['theme-data']['layout']
+        ACCENT, MUTED = COLORS['accent'], COLORS['text-muted']
+        WINDOW = tuple(int(v) for v in BRANDING.WINDOW_SIZES[LAYOUT].replace('px', '').split(','))
         # Same substitution as tools/install-profile.sh (tools/corry-branding.py).
         slides = [{k: s.get(k, '') for k in ['image', 'title', 'description']} for s in profile['slides']]
         (BRAND / 'slides/Slides.js').write_text('var slides = ' + __import__('json').dumps(slides) + ';\n')
-        for name in ['stylesheet.qss', 'corry-mark.svg', 'calamares-sidebar.qml', 'show.qml', 'SlideControl.qml', 'welcome-media.qml']:
-            themed(BRAND / name)
+        shutil.copyfile(BRAND / BRANDING.HEADERS[LAYOUT], BRAND / 'calamares-sidebar.qml')
+        values = BRANDING.tokens(profile)
+        version = (ROOT / 'VERSION').read_text().strip()
+        for name in BRANDING.THEMED + ['calamares-sidebar.qml']:
+            themed(BRAND / name, values, version)
         app = QApplication(sys.argv[:1])
         app.setStyle('Fusion')
         app.setFont(QFont('Noto Sans', 10))
-        app.setStyleSheet((BRAND / 'stylesheet.qss').read_text())
+        app.setStyleSheet((BRAND / 'stylesheet.qss').read_text().replace('@BRANDING_DIR@', str(BRAND)))
         window = Preview()
         window.show()
         if args.screenshots:

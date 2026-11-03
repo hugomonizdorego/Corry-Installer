@@ -25,7 +25,10 @@ case "${1:-}" in
   [ -z "$list" ] && exit 0
   echo "Corry: removing Calamares packages: $list"
   # shellcheck disable=SC2086
-  DEBIAN_FRONTEND=noninteractive apt-get purge -y $list
+  if ! DEBIAN_FRONTEND=noninteractive apt-get purge -y $list; then
+   echo "Corry: Calamares could not be removed; Corry is not installed over it." >&2
+   exit 1
+  fi
   ;;
  --leftovers)
   for package in $(packages removed); do

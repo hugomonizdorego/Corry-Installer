@@ -18,6 +18,18 @@ LIVE_PACKAGES = (
 # Debian packages that only exist for the installer: Corry's own packages and,
 # for script installs, Debian's Calamares.
 INSTALLER_PACKAGES = ("corry-edukasaun", "corry-debion", "corry", "calamares", "calamares-settings-debian")
+# Packages the installed system needs, which the live image may have received
+# only as dependencies of Corry (marked "automatically installed"). They are
+# marked manual before Corry is purged, so a later "apt autoremove" cannot take
+# away the tools that unlock, mount and boot the system (an encrypted or LVM
+# root would no longer start without cryptsetup-initramfs or lvm2).
+KEEP_PACKAGES = (
+    "sudo", "cryptsetup", "cryptsetup-initramfs", "lvm2", "btrfs-progs", "xfsprogs", "dosfstools", "e2fsprogs",
+    "ntfs-3g", "exfatprogs", "os-prober", "efibootmgr", "initramfs-tools", "locales", "tzdata",
+    "keyboard-configuration", "grub-common", "grub2-common", "grub-pc", "grub-pc-bin", "grub-efi-amd64",
+    "grub-efi-amd64-bin", "grub-efi-amd64-signed", "grub-efi-ia32", "grub-efi-ia32-bin", "shim-signed",
+    "polkitd", "pkexec", "xdg-user-dirs", "parted", "fdisk", "kmod",
+)
 # Files and directories that belong only to the installer.
 INSTALLER_PATHS = (
     "usr/share/applications/corry-installer.desktop",
@@ -32,6 +44,8 @@ INSTALLER_PATHS = (
     "usr/bin/corry-installer",
     "usr/share/icons/hicolor/scalable/apps/corry-installer.svg",
     "usr/share/pixmaps/corry-installer.png",
+    "usr/share/pixmaps/corry-installer.jpg",
+    "usr/share/pixmaps/corry-installer.jpeg",
     "usr/bin/calamares",
     "usr/share/polkit-1/actions/com.github.calamares.calamares.policy",
     "usr/share/polkit-1/actions/io.github.corry-installer.session.policy",
@@ -132,6 +146,9 @@ def run():
     # Nothing here may stop the installation: what cannot be removed is reported.
     problems = []
     warn = problems.append
+    keep = installed(KEEP_PACKAGES + tuple(configuration.get("keepPackages", [])))
+    if keep and libcalamares.utils.target_env_call(["apt-mark", "manual"] + keep) != 0:
+        warn("could not mark {} as manually installed".format(", ".join(keep)))
     purge(installed(LIVE_PACKAGES + INSTALLER_PACKAGES + tuple(configuration.get("purgePackages", []))), warn)
     live_user = configuration.get("liveUser", "")
     new_user = libcalamares.globalstorage.value("username")

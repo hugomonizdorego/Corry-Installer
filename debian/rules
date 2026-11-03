@@ -45,3 +45,13 @@ override_dh_strip:
 
 # dwz's shared debug file would otherwise land in the packages themselves.
 override_dh_dwz:
+
+# Qt's SVG image plugin draws the SVG logo, slides and icons. It is not a
+# library dependency (dh_shlibdeps cannot see it), and an "a | b" alternative
+# would be satisfied by libqt6svg6 alone, so the package that ships the plugin
+# on this Debian base is named explicitly.
+override_dh_gencontrol:
+	svg=$$(dpkg -S '*/qt6/plugins/imageformats/libqsvg.so' 2>/dev/null | head -n1 | cut -d: -f1); \
+	[ -n "$$svg" ] || { echo "Qt 6 SVG image plugin (libqsvg.so) not found on the build system" >&2; exit 1; }; \
+	echo "Qt 6 SVG image plugin: $$svg"; \
+	dh_gencontrol -- -Vcorry:SvgPlugin="$$svg"

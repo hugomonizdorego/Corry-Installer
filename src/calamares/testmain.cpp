@@ -71,6 +71,7 @@ struct ModuleConfig
     QString m_branding;
     bool m_ui;
     bool m_pythonInjection;
+    QString m_saveGlobal;  ///< Corry: write global storage here when the jobs end
 };
 
 static ModuleConfig
@@ -113,6 +114,12 @@ handle_args( QCoreApplication& a )
     QCommandLineOption pythonOption( { QStringLiteral( "P" ), QStringLiteral( "no-injected-python" ) },
                                      QStringLiteral( "Do not disable potentially-harmful Python commands" ) );
     parser.addOption( pythonOption );
+    // Corry: chain modules in tests (tools/ci/e2e-install.sh): the global
+    // storage after the job is written back, and a failed job exits with 1.
+    QCommandLineOption saveGlobalOption( { QStringLiteral( "G" ), QStringLiteral( "save-global" ) },
+                                         QStringLiteral( "Write global storage to this YAML file when the jobs end" ),
+                                         "global.yaml" );
+    parser.addOption( saveGlobalOption );
 #endif
 
     parser.addPositionalArgument( "module", "Path or name of module to run." );
@@ -153,7 +160,8 @@ handle_args( QCoreApplication& a )
                               parser.value( langOption ),
                               parser.value( brandOption ),
                               parser.isSet( slideshowOption ) || parser.isSet( uiOption ),
-                              pythonInjection };
+                              pythonInjection,
+                              parser.value( saveGlobalOption ) };
     }
 }
 
@@ -563,10 +571,29 @@ main( int argc, char* argv[] )
 
     Calamares::JobQueue::instance()->enqueue( 100, m->jobs() );
 
+    static bool failed = false;
+    QObject::connect( Calamares::JobQueue::instance(),
+                      &Calamares::JobQueue::failed,
+                      []( const QString& message, const QString& details )
+                      {
+                          failed = true;
+                          cError() << "Job failed:" << message << details;
+                      } );
+    const QString saveGlobal = module.m_saveGlobal;
     QObject::connect( Calamares::JobQueue::instance(),
                       &Calamares::JobQueue::finished,
-                      [ application ]()
-                      { QTimer::singleShot( std::chrono::seconds( 3 ), application, &QApplication::quit ); } );
+                      [ application, saveGlobal ]()
+                      {
+                          if ( !saveGlobal.isEmpty()
+                               && !Calamares::JobQueue::instance()->globalStorage()->saveYaml( saveGlobal ) )
+                          {
+                              cError() << "Could not save global storage to" << saveGlobal;
+                              failed = true;
+                          }
+                          QTimer::singleShot( std::chrono::seconds( 1 ),
+                                              application,
+                                              [] { QCoreApplication::exit( failed ? 1 : 0 ); } );
+                      } );
     QTimer::singleShot( 0, []() { Calamares::JobQueue::instance()->start(); } );
 
     return application->exec();

@@ -65,10 +65,11 @@ install -d "$destination/usr/share/applications" "$destination/usr/bin"
 # The shortcut icon (Icon=corry-installer): the product logo in the distribution's colors.
 logo=$config/branding/corry/$(python3 -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))["images"]["productLogo"])' "$config/branding/corry/branding.desc")
 if [[ $logo == *.svg ]]; then
- install -D -m644 "$logo" "$destination/usr/share/icons/hicolor/scalable/apps/corry-installer.svg"
+ icon=/usr/share/icons/hicolor/scalable/apps/corry-installer.svg
 else
- install -D -m644 "$logo" "$destination/usr/share/pixmaps/corry-installer.${logo##*.}"
+ icon=/usr/share/pixmaps/corry-installer.${logo##*.}
 fi
+install -D -m644 "$logo" "$destination$icon"
 sed "s|^Name=.*|Name=Install $product|" "$repo/config/corry/corry-installer.desktop" > "$launcher"
 chmod 644 "$launcher"
 # Default installer: the menu entry above, a desktop icon for the live user (put
@@ -111,8 +112,7 @@ manifest="$destination/usr/lib/corry/manifest"
  printf '%s\n' /etc/calamares /usr/lib/corry /usr/bin/corry-installer /usr/share/applications/corry-installer.desktop \
   /etc/xdg/autostart/corry-desktop-icon.desktop /etc/xdg/autostart/corry-installer.desktop \
   /usr/local/share/applications/calamares.desktop /usr/local/share/applications/install-debian.desktop \
-  /usr/local/bin/install-debian /usr/share/icons/hicolor/scalable/apps/corry-installer.svg \
-  /usr/share/polkit-1/actions/io.github.corry-installer.session.policy
+  /usr/local/bin/install-debian "$icon" /usr/share/polkit-1/actions/io.github.corry-installer.session.policy
 } | sort -u > "$manifest.new"
 mv "$manifest.new" "$manifest"
 echo "Corry $(cat "$repo/VERSION") profile installed for $product and set as the default installer. Run corry-installer from the live session."

@@ -36,7 +36,7 @@ THEME_COLORS = ('page', 'surface', 'surface-alt', 'border', 'text', 'text-muted'
                 'warning-bg', 'warning-text', 'danger-bg', 'danger-text', 'success')
 # Branding sources with theme tokens. The header is chosen by the theme's layout
 # and installed as calamares-sidebar.qml.
-THEMED = ['stylesheet.qss', 'corry-mark.svg', 'combo-arrow.svg', 'show.qml', 'SlideControl.qml', 'welcome-media.qml']
+THEMED = ['stylesheet.qss', 'corry-mark.svg', 'combo-arrow.svg', 'check.svg', 'show.qml', 'SlideControl.qml', 'welcome-media.qml']
 HEADERS = {'top': 'sidebar-top.qml', 'left': 'sidebar-left.qml'}
 # The side menu takes about 250px, so that layout gets a wider window (both
 # shrink to fit smaller screens; pages then scroll instead of being cut).

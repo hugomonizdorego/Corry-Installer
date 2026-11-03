@@ -151,12 +151,18 @@ def installed(package):
 
 
 def init_owner():
-    """The package owning the init binary in the target."""
-    path = (output(["readlink", "-f", "/sbin/init"], 60) or "/sbin/init").strip() or "/sbin/init"
-    text = output(["dpkg-query", "-S", path], 60)
-    if not text:
-        return ""
-    return text.split(":", 1)[0].strip()
+    """The package that ships the init the kernel starts (/sbin/init itself).
+
+    The path is not resolved: runit-init ships /usr/sbin/init as a link to
+    /usr/sbin/runit-init, which belongs to the runit package.
+    """
+    for path in ("/usr/sbin/init", "/sbin/init"):
+        text = output(["dpkg-query", "-S", path], 60)
+        if text:
+            return text.splitlines()[-1].split(":", 1)[0].strip()
+    path = (output(["readlink", "-f", "/sbin/init"], 60) or "").strip()
+    text = output(["dpkg-query", "-S", path], 60) if path else None
+    return text.splitlines()[-1].split(":", 1)[0].strip() if text else ""
 
 
 def record(system, init, result, message):

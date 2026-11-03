@@ -136,7 +136,8 @@ class SequenceTests(unittest.TestCase):
             data = yaml.load(workflow.read_text(), Loader=Strict)
             self.assertIn('jobs', data, workflow.name)
         corry = yaml.safe_load((ROOT / '.github/workflows/corry.yml').read_text())
-        self.assertEqual(list(corry['jobs']), ['package', 'init-switch', 'release'])
+        self.assertEqual(list(corry['jobs']), ['package', 'init-switch', 'e2e', 'release'])
+        self.assertEqual(corry['jobs']['release']['needs'], ['package', 'init-switch', 'e2e'])
         self.assertEqual(corry['jobs']['init-switch']['strategy']['matrix']['init'], ['sysvinit', 'openrc', 'runit'])
 
     def test_system_components_options(self):
@@ -364,7 +365,10 @@ class BrandingTests(unittest.TestCase):
             stubs = {
                 'getent': f'cat <<"EOF"\n{passwd}EOF',
                 # runuser -u USER -- xdg-user-dir DESKTOP: answer per user ("Escritorio" for one).
-                'runuser': f'case "$2" in user) echo {homes["user"]}/Escritorio;; *) echo {homes["hugo"]}/Desktop;; esac',
+                # runuser -u USER -- xdg-user-dir DESKTOP answers per user ("Escritorio" for one);
+                # other commands run as the test's own user.
+                'runuser': f'u=$2; shift 3; if [ "$1" = xdg-user-dir ]; then case "$u" in user) echo {homes["user"]}/Escritorio;; '
+                           f'*) echo {homes["hugo"]}/Desktop;; esac; else echo "$u $*" >> {temp}/runuser.log; exec "$@"; fi',
                 'install': 'args=""; while [ $# -gt 0 ]; do case "$1" in -o|-g) shift 2;; *) args="$args $1"; shift;; esac; done; exec /usr/bin/install $args',
                 'id': 'echo users',
             }
@@ -381,6 +385,11 @@ class BrandingTests(unittest.TestCase):
                 self.assertIn('Exec=corry-installer', shortcut.read_text())
                 self.assertTrue(os.access(shortcut, os.X_OK))
             self.assertTrue((homes['hugo'] / '.config/corry/desktop-icon-done').exists())
+            # Root never wrote into a home itself: every write ran as the home's owner.
+            as_users = (temp / 'runuser.log').read_text()
+            self.assertIn('user sh -c mkdir', as_users)
+            self.assertIn('hugo sh -c mkdir', as_users)
+            self.assertNotIn('install -d -o', script.read_text())
             run('--remove-all')
             self.assertFalse(shortcut_user.exists() or shortcut_hugo.exists())
             self.assertTrue((homes['hugo'] / 'Desktop/notes.desktop').exists())
@@ -575,13 +584,17 @@ class CleanupTests(unittest.TestCase):
         def call(args, *rest):
             calls.append(args)
             if args[0] == 'dpkg-query':
-                return 0 if args[-1] in ('live-config', 'calamares') else 1
+                return 0 if args[-1] in ('live-config', 'calamares', 'lvm2', 'cryptsetup-initramfs') else 1
             return 0
         with tempfile.TemporaryDirectory() as temp:
             fake = fake_calamares({'rootMountPoint': temp, 'username': 'hugo'}, {'liveUser': 'user'}, call)
             self.assertIsNone(load_module('corrycleanup', fake).run())
         self.assertIn(['dpkg', '--purge', 'live-config', 'calamares'], calls)
         self.assertFalse(any('autoremove' in args for args in calls))
+        # What the system needs stays even if it came in only for Corry.
+        marks = [args for args in calls if args[:2] == ['apt-mark', 'manual']]
+        self.assertEqual(len(marks), 1)
+        self.assertLess(calls.index(marks[0]), calls.index(['dpkg', '--purge', 'live-config', 'calamares']))
         self.assertIn(['userdel', '--', 'user'], calls)
         self.assertFalse(any('--remove' in args or '-r' in args for args in calls))
 

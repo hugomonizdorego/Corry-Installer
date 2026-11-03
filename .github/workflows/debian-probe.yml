@@ -33,6 +33,13 @@ jobs:
             echo "=== $p"
             apt-cache show "$p" 2>&1 | grep -E '^(Package|Version|Depends|Pre-Depends|Recommends|Conflicts|Breaks|Provides|Replaces):' | head -12
           done
+      - name: Qt 6 SVG packages (the image plugin draws Corry's SVG logo, slides and icons)
+        shell: bash {0}
+        run: |
+          apt-cache search --names-only 'qt6.*svg|svg.*qt6'
+          for p in qt6-svg-plugins libqt6svg6 qt6-svg-dev; do echo "=== $p"; apt-cache show "$p" 2>&1 | grep -E '^(Package|Version|Depends):' | head -4; done
+          apt-get install -y --no-install-recommends qt6-svg-dev >/dev/null 2>&1
+          dpkg -S '*/qt6/plugins/imageformats/libqsvg.so' || echo 'libqsvg.so: not installed by qt6-svg-dev'
       - name: Live-like system with systemd, logind, NetworkManager, LightDM, Xfce session and GDM
         shell: bash {0}
         run: |
@@ -86,9 +93,12 @@ jobs:
         shell: bash {0}
         run: |
           echo 'refind refind/install_to_esp boolean false' | debconf-set-selections
-          apt-get install -y --no-install-recommends systemd-boot refind extlinux syslinux-common u-boot-menu 2>&1 | tail -5
+          # One at a time: a package missing on this base (rEFInd on testing) must not stop the others.
+          for p in systemd-boot refind extlinux syslinux-common; do
+            echo "=== install $p"; apt-get install -y --no-install-recommends "$p" 2>&1 | tail -3
+          done
           echo "=== systemd-boot without systemd?"; apt-get -s install -y systemd-boot 2>&1 | grep -E '^(Remv|Inst|E:|   )' | head -20
-          for p in systemd-boot systemd-boot-tools systemd-boot-efi refind extlinux syslinux-common u-boot-menu; do echo "=== files of $p"; dpkg -L $p 2>/dev/null | grep -E 'bin/|kernel|initramfs|default|README|\.efi|mbr|drivers' | head -24; done
+          for p in systemd-boot systemd-boot-tools systemd-boot-efi refind extlinux syslinux-common; do echo "=== files of $p"; dpkg -L $p 2>/dev/null | grep -E 'bin/|kernel|initramfs|default|README|\.efi|mbr|drivers' | head -24; done
           for f in /var/lib/dpkg/info/systemd-boot.postinst /var/lib/dpkg/info/refind.postinst /var/lib/dpkg/info/extlinux.postinst /var/lib/dpkg/info/u-boot-menu.postinst /etc/kernel/postinst.d/zz-systemd-boot /etc/initramfs/post-update.d/zz-systemd-boot /etc/default/extlinux /etc/default/u-boot /usr/share/doc/systemd-boot/README.Debian /usr/share/doc/extlinux/README.Debian /usr/share/doc/refind/README.Debian; do
             echo "=== $f"; test -e "$f" && sed -n 1,60p "$f" || echo missing; done
           echo "=== extlinux tools"; ls -l /usr/sbin/extlinux* /usr/bin/extlinux* /usr/lib/EXTLINUX /usr/lib/syslinux/mbr 2>&1 | head -20; sed -n 1,80p /usr/sbin/extlinux-update 2>/dev/null

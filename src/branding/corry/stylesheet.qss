@@ -85,7 +85,7 @@ QLabel#corrySummaryBody { color: @text-muted@; }
 QRadioButton, QCheckBox { spacing: 10px; padding: 4px 0; }
 QCheckBox::indicator { width: 20px; height: 20px; border-radius: 6px; border: 2px solid @border@; background: @surface@; }
 QCheckBox::indicator:hover { border-color: @accent@; }
-QCheckBox::indicator:checked { border-color: @accent@; background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 @accent@, stop:1 @accent-light@); }
+QCheckBox::indicator:checked { border-color: @accent@; background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 @accent@, stop:1 @accent-light@); image: url(@BRANDING_DIR@/check.svg); }
 QCheckBox::indicator:disabled { border-color: @border@; background: @surface-alt@; }
 QRadioButton::indicator { width: 16px; height: 16px; border-radius: 10px; border: 2px solid @border@; background: @surface@; }
 QRadioButton::indicator:hover { border-color: @accent@; }

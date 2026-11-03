@@ -1,0 +1,2 @@
+# The 0.3 System page settings, split into two pages in 1.0.
+rm_conffile /etc/calamares/modules/corrysystem.conf 1.0~

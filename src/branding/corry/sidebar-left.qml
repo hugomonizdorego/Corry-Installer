@@ -72,12 +72,14 @@ Rectangle {
                 clip: true
                 spacing: 2
                 boundsBehavior: Flickable.StopAtBounds
+                // Every step fits: rows shrink from 40 to 30 pixels before the list would scroll.
+                readonly property int rowHeight: Math.max(30, Math.min(40, Math.floor(height / Math.max(1, count)) - spacing))
                 model: ViewManager
                 currentIndex: ViewManager.currentStepIndex
                 delegate: Item {
                     id: step
                     width: steps.width
-                    height: 40
+                    height: steps.rowHeight
                     property bool done: index < ViewManager.currentStepIndex
                     property bool current: index === ViewManager.currentStepIndex
                     property color mark: sidebar.marks[index % 4]
@@ -110,11 +112,12 @@ Rectangle {
                     }
                 }
             }
-            // Bottom card: progress and the About button. Hidden on short screens.
+            // Bottom card: progress and the About button. Shown only when every step
+            // still gets a row of at least 32 pixels next to it (logo block about 170px).
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 128
-                visible: panel.height > 640
+                visible: panel.height - 32 - 170 - 138 >= steps.count * 34
                 radius: 22
                 color: "@hero@"
                 ColumnLayout {

@@ -89,6 +89,8 @@ jobs:
           LANG=en_US.UTF-8 timeout 40 xvfb-run -a -s '-screen 0 1280x860x24' calamares -d > calamares.log 2>&1 || true
           grep -E 'Using Calamares|Loaded branding' calamares.log
           ! grep -E 'FATAL|Cowardly refusing|QML component not ready' calamares.log
+          # Every module loads, and the QML header or side menu and the welcome image work.
+          ! grep -E 'Initialization Failed|could not be loaded|Failed to load module|failed to load|QML Component \(default slideshow\) Error|\.qml:[0-9]+:' calamares.log
           grep -q 'Using Calamares settings file at "/etc/calamares/settings.conf"' calamares.log
           grep -q 'Using Calamares QML directory "/usr/share/calamares/qml"' calamares.log
           grep -q 'Using Calamares branding file at "/etc/calamares/branding/corry/branding.desc"' calamares.log
@@ -111,6 +113,13 @@ jobs:
           name: corry-${{ matrix.distro }}-debian-${{ matrix.debian }}-amd64
           path: dist/*
           retention-days: 30
+      # Calamares' module runner from the same build, for the end-to-end test
+      # (not part of the release).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: e2e-loadmodule-${{ matrix.distro }}
+          path: obj-*/loadmodule
+          retention-days: 7
 
   init-switch:
     # The corryinit job, for real, on a live-like Debian system, for every init
@@ -147,7 +156,7 @@ jobs:
       - name: With GDM installed the switch is refused and systemd stays
         run: |
           python3 tools/ci/run-job.py corryinit --root / --allow-live-root --storage storage.json | tee out.txt
-          grep -q 'gdm3' out.txt
+          grep -q 'gdm3 need systemd' out.txt
           test "$(readlink -f /sbin/init)" = /usr/lib/systemd/systemd
           python3 -c "import json; s = json.load(open('storage.json')); assert s['corrySystem']['init']['installed'] == 'systemd', s"
       - name: Without GDM the switch succeeds, /sbin/init belongs to ${{ matrix.init }} and systemd is purged
@@ -159,7 +168,8 @@ jobs:
           packages=$(python3 -c "import json; print(' '.join(json.load(open('storage.json'))['corrySystem']['init']['packages']))")
           provider=sysvinit-core
           case " $packages " in *" runit-init "*) provider=runit-init;; esac
-          dpkg-query -S "$(readlink -f /sbin/init)" | grep -q "^$provider:"
+          # The package that ships /usr/sbin/init itself (runit's is a link to runit's runit-init).
+          dpkg-query -S /usr/sbin/init | grep -q "^$provider:"
           for p in $packages; do
             test "$(dpkg-query -W -f='${db:Status-Abbrev}' $p 2>/dev/null)" = "ii " || { echo "$p is not installed"; exit 1; }
           done
@@ -173,11 +183,63 @@ jobs:
           python3 -c "import json; s = json.load(open('storage.json')); assert s['corrySystem']['init']['installed'] == '${{ matrix.init }}', s"
           dpkg --audit
 
+  e2e:
+    # A real installation with the packaged job modules, in installer order,
+    # into a disk image; then the disk is booted in QEMU and must report its
+    # init system and root filesystem (tools/ci/e2e-install.sh).
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {debian: stable, distro: edukasaun, firmware: efi, init: systemd, loader: grub, fs: btrfs}
+          - {debian: testing, distro: debion, firmware: efi, init: systemd, loader: grub, fs: btrfs}
+          - {debian: stable, distro: edukasaun, firmware: bios, init: systemd, loader: grub, fs: ext4}
+          - {debian: stable, distro: edukasaun, firmware: efi, init: sysvinit, loader: grub, fs: btrfs}
+          - {debian: testing, distro: debion, firmware: efi, init: systemd, loader: systemd-boot, fs: btrfs}
+    name: e2e (${{ matrix.distro }}, ${{ matrix.firmware }}, ${{ matrix.init }}, ${{ matrix.loader }}, ${{ matrix.fs }})
+    container:
+      image: debian:${{ matrix.debian }}
+      options: --privileged
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - run: apt-get update && apt-get install -y git ca-certificates
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: corry-${{ matrix.distro }}-debian-${{ matrix.debian }}-amd64
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: e2e-loadmodule-${{ matrix.distro }}
+          path: e2e
+      - name: Install Corry (the package) and the test tools
+        run: |
+          sh dist/install-corry-debs.sh
+          apt-get install -y --no-install-recommends debootstrap squashfs-tools qemu-system-x86 ovmf python3-yaml \
+            parted dosfstools btrfs-progs e2fsprogs rsync util-linux
+          install -m755 e2e/*/loadmodule /usr/local/bin/corry-loadmodule
+      - name: Install with the real jobs, then boot the disk
+        run: |
+          LOADMODULE=/usr/local/bin/corry-loadmodule E2E_WORK=/tmp/corry-e2e \
+            bash tools/ci/e2e-install.sh ${{ matrix.distro }} ${{ matrix.firmware }} ${{ matrix.init }} ${{ matrix.loader }} ${{ matrix.fs }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs-${{ matrix.distro }}-${{ matrix.firmware }}-${{ matrix.init }}-${{ matrix.loader }}-${{ matrix.fs }}
+          path: |
+            /tmp/corry-e2e/*.log
+            /tmp/corry-e2e/global.yaml
+          retention-days: 14
+
   release:
     # Push a tag such as v0.2, or run the workflow by hand with "release",
     # to publish both packages as a GitHub release.
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
-    needs: [package, init-switch]
+    needs: [package, init-switch, e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -186,6 +248,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - name: The tag, VERSION, debian/changelog and CHANGELOG-CORRY.md agree
+        run: |
+          version=$(cat VERSION)
+          test "$(sed -n '1s/.*(\([^)]*\)).*/\1/p' debian/changelog)" = "$version"
+          test "$(awk '/^## /{print $2; exit}' CHANGELOG-CORRY.md)" = "$version"
+          case $GITHUB_REF_NAME in v*) test "$GITHUB_REF_NAME" = "v$version";; esac
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -7,7 +7,8 @@
 #   corry-desktop-icon --remove-all    remove the shortcuts again (package postrm)
 #
 # The shortcut is made executable and trusted, so GNOME, Xfce and others start it
-# with a double click instead of asking first.
+# with a double click instead of asking first. Everything in a user's home is
+# written by that user (runuser): root never follows a path a user controls.
 launcher=/usr/share/applications/corry-installer.desktop
 name=corry-installer.desktop
 
@@ -20,12 +21,10 @@ desktop_dir() { # user home
 trust() { # user uid file
  bus=/run/user/$2/bus
  if command -v gio >/dev/null && [ -S "$bus" ]; then
-  runuser -u "$1" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" \
-   gio set "$3" metadata::trusted true 2>/dev/null || true
   # Xfce trusts a launcher whose checksum it has recorded.
-  sum=$(sha256sum "$3" | cut -d' ' -f1)
-  runuser -u "$1" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" \
-   gio set -t string "$3" metadata::xfce-exe-checksum "$sum" 2>/dev/null || true
+  runuser -u "$1" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" sh -c \
+   'gio set "$1" metadata::trusted true; gio set -t string "$1" metadata::xfce-exe-checksum "$(sha256sum "$1" | cut -d" " -f1)"' \
+   sh "$3" 2>/dev/null || true
  fi
 }
 
@@ -42,20 +41,18 @@ case "${1:-}" in
   [ -f "$launcher" ] || exit 0
   human_users | while read -r user uid home; do
    dir=$(desktop_dir "$user" "$home")
-   group=$(id -gn "$user")
-   install -d -o "$user" -g "$group" "$dir"
-   install -m 755 -o "$user" -g "$group" "$launcher" "$dir/$name"
+   # The marker: done for this user, the login helper will not add it back if removed.
+   runuser -u "$user" -- sh -c 'mkdir -p "$1" "$2" && install -m 755 "$3" "$1/$4" && : > "$2/desktop-icon-done"' \
+    sh "$dir" "$home/.config/corry" "$launcher" "$name" || continue
    trust "$user" "$uid" "$dir/$name"
-   # Done for this user: the login helper will not add it back if removed.
-   install -d -o "$user" -g "$group" "$home/.config" "$home/.config/corry"
-   install -m 644 -o "$user" -g "$group" /dev/null "$home/.config/corry/desktop-icon-done"
   done
   ;;
  --remove-all)
   human_users | while read -r user uid home; do
    file=$(desktop_dir "$user" "$home")/$name
-   # Only remove our own shortcut.
-   if [ -f "$file" ] && grep -q '^Exec=corry-installer' "$file"; then rm -f "$file"; fi
+   # Only our own shortcut, removed by its owner.
+   runuser -u "$user" -- sh -c 'if [ -f "$1" ] && grep -q "^Exec=corry-installer" "$1"; then rm -f "$1"; fi' \
+    sh "$file" || true
   done
   ;;
  '')
