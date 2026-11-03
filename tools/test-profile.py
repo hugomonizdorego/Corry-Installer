@@ -122,6 +122,23 @@ class SequenceTests(unittest.TestCase):
             self.assertEqual((PROFILE / f'modules/{name}.conf').read_text(),
                              (ROOT / f'src/modules/{module}/{name}.conf').read_text(), name)
 
+    def test_workflows_have_no_duplicate_keys(self):
+        # GitHub rejects a workflow file with a repeated key; PyYAML would keep the last one.
+        class Strict(yaml.SafeLoader):
+            pass
+
+        def mapping(loader, node, deep=False):
+            keys = [str(loader.construct_object(key, deep=deep)) for key, _ in node.value]
+            self.assertEqual(len(keys), len(set(keys)), keys)
+            return yaml.SafeLoader.construct_mapping(loader, node, deep)
+        Strict.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
+        for workflow in (ROOT / '.github/workflows').glob('*.yml'):
+            data = yaml.load(workflow.read_text(), Loader=Strict)
+            self.assertIn('jobs', data, workflow.name)
+        corry = yaml.safe_load((ROOT / '.github/workflows/corry.yml').read_text())
+        self.assertEqual(list(corry['jobs']), ['package', 'init-switch', 'release'])
+        self.assertEqual(corry['jobs']['init-switch']['strategy']['matrix']['init'], ['sysvinit', 'openrc', 'runit'])
+
     def test_system_components_options(self):
         init_page = yaml.safe_load((PROFILE / 'modules/corrysystem-init.conf').read_text())
         loader_page = yaml.safe_load((PROFILE / 'modules/corrysystem-bootloader.conf').read_text())
