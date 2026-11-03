@@ -111,7 +111,7 @@ def online(url):
     try:
         with urllib.request.urlopen(url, timeout=10):
             return True
-    except (OSError, ValueError):
+    except Exception:  # OSError, ValueError, http.client.HTTPException (a non-HTTP answer)
         return False
 
 

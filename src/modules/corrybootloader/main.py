@@ -40,7 +40,7 @@ def online(url, timeout=10):
     try:
         with urllib.request.urlopen(url, timeout=timeout):
             return True
-    except (OSError, ValueError):
+    except Exception:  # OSError, ValueError, http.client.HTTPException (a non-HTTP answer)
         return False
 
 
@@ -270,6 +270,13 @@ def unsuitable(wanted, loader):
     fs = str(boot.get("fs") or "").lower()
     if wanted in ("refind", "extlinux") and boot.get("luksMapperName"):
         return "it cannot read an encrypted /boot"
+    if wanted in ("refind", "extlinux") and boot.get("device"):
+        # An LVM logical volume (or anything else on device mapper, such as LVM
+        # on LUKS): neither loader has a driver for it.
+        kinds = host(["lsblk", "-ndo", "TYPE", boot["device"]])
+        if kinds and kinds.returncode == 0 and kinds.stdout.split() and kinds.stdout.split()[0] in ("lvm", "crypt", "dm"):
+            return "it cannot read /boot on {} ({})".format("LVM" if "lvm" in kinds.stdout else "device mapper",
+                                                           boot["device"])
     filesystems = [str(f).lower() for f in (loader.get("filesystems") or DEFAULT_FILESYSTEMS.get(wanted, []))]
     if filesystems and fs and fs not in filesystems:
         return "it cannot read a {} /boot (it reads {})".format(fs, ", ".join(filesystems))

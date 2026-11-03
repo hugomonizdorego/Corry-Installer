@@ -65,6 +65,30 @@ secureBootEnabled()
     return data.size() == 5 && data.at( 4 ) == 1;
 }
 
+bool
+pingInternet()
+{
+    // Network::Manager::checkHasInternet() keeps a mutex locked while its request
+    // runs in a nested event loop and sets no timeout: on the GUI thread a second
+    // check from another page then deadlocks. A ping with a timeout and no lock.
+    auto urls = Calamares::Network::Manager::getCheckInternetUrls();
+    if ( urls.isEmpty() )
+    {
+        urls.append( QUrl( QStringLiteral( "http://deb.debian.org/debian/" ) ) );
+    }
+    const Calamares::Network::RequestOptions options( Calamares::Network::RequestOptions::FollowRedirect,
+                                                      std::chrono::milliseconds( 8000 ) );
+    Calamares::Network::Manager network;
+    for ( const auto& url : urls )
+    {
+        if ( network.synchronousPing( url, options ) == Calamares::Network::RequestStatus::Ok )
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 Environment
 detectEnvironment( bool recheckNetwork )
 {
@@ -72,7 +96,7 @@ detectEnvironment( bool recheckNetwork )
     auto* gs = Calamares::JobQueue::instance() ? Calamares::JobQueue::instance()->globalStorage() : nullptr;
     // The manager is a thin handle on one shared state (see network/Manager.h).
     Calamares::Network::Manager network;
-    environment.online = recheckNetwork ? network.checkHasInternet() : network.hasInternet();
+    environment.online = recheckNetwork ? pingInternet() : network.hasInternet();
     if ( !recheckNetwork && gs && gs->contains( QStringLiteral( "hasInternet" ) ) )
     {
         environment.online = environment.online || gs->value( QStringLiteral( "hasInternet" ) ).toBool();
@@ -101,7 +125,7 @@ detectEnvironment( bool recheckNetwork )
         // (corryPlannedPartitions); "partitions" itself is only written when
         // the installation runs.
         QString root, boot;
-        bool rootEncrypted = false, bootEncrypted = false;
+        bool rootEncrypted = false, bootEncrypted = false, rootLvm = false, bootLvm = false;
         auto partitions = gs->value( QStringLiteral( "corryPlannedPartitions" ) ).toList();
         if ( partitions.isEmpty() )
         {
@@ -114,21 +138,25 @@ detectEnvironment( bool recheckNetwork )
             const auto fs = partition.value( QStringLiteral( "fs" ) ).toString().toLower();
             const bool encrypted = partition.value( QStringLiteral( "encrypted" ) ).toBool()
                 || partition.contains( QStringLiteral( "luksMapperName" ) );
+            const bool lvm = partition.value( QStringLiteral( "lvm" ) ).toBool();
             if ( mountPoint == QStringLiteral( "/" ) )
             {
                 root = fs;
                 rootEncrypted = encrypted;
+                rootLvm = lvm;
             }
             else if ( mountPoint == QStringLiteral( "/boot" ) )
             {
                 boot = fs;
                 bootEncrypted = encrypted;
+                bootLvm = lvm;
             }
         }
         environment.bootFilesystem = boot.isEmpty() ? root : boot;
         // Corry's Btrfs layout mounts with zstd compression (mount.conf).
         environment.bootCompressed = environment.bootFilesystem == QStringLiteral( "btrfs" );
         environment.bootEncrypted = boot.isEmpty() ? rootEncrypted : bootEncrypted;
+        environment.bootLvm = boot.isEmpty() ? rootLvm : bootLvm;
         // os-prober's findings from the partition page: other systems on this computer.
         environment.otherSystems = !gs->value( QStringLiteral( "osproberLines" ) ).toStringList().isEmpty();
         // The init page (before the boot loader page) wrote its choice.
@@ -329,6 +357,14 @@ Config::evaluateBootLoader( Option& option, const Environment& environment )
         option.available = false;
         option.reason = QCoreApplication::translate(
             "Corry", "Cannot read an encrypted /boot. Use GRUB, or add a separate unencrypted /boot." );
+        return;
+    }
+    if ( environment.bootLvm
+         && ( option.id == QStringLiteral( "extlinux" ) || option.id == QStringLiteral( "refind" ) ) )
+    {
+        option.available = false;
+        option.reason = QCoreApplication::translate(
+            "Corry", "Cannot read /boot on LVM. Use GRUB, or add a separate /boot partition." );
         return;
     }
     if ( option.id == QStringLiteral( "extlinux" ) && environment.otherSystems )

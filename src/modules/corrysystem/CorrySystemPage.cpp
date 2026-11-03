@@ -4,6 +4,8 @@
  */
 #include "CorrySystemPage.h"
 
+#include "GlobalStorage.h"
+#include "JobQueue.h"
 #include "utils/Retranslator.h"
 
 #include <QGridLayout>
@@ -16,6 +18,8 @@
 #include <QCoreApplication>
 #include <QStyle>
 #include <QVBoxLayout>
+#include <QFutureWatcher>
+#include <QtConcurrent/QtConcurrent>
 
 namespace CorrySystem
 {
@@ -141,7 +145,30 @@ CorrySystemPage::CorrySystemPage( Config* config, QWidget* parent )
     recheck->setObjectName( QStringLiteral( "corryRecheckButton" ) );
     CALAMARES_RETRANSLATE( recheck->setText( tr( "Check again" ) );
                            recheck->setToolTip( tr( "Test the internet connection again and refresh the options." ) ); );
-    connect( recheck, &QPushButton::clicked, this, [ this ] { m_config->evaluate( detectEnvironment( true ) ); } );
+    connect( recheck,
+             &QPushButton::clicked,
+             this,
+             [ this, recheck ]
+             {
+                 // The test runs in a worker thread: the page stays usable, and
+                 // the button stays off until the answer arrives.
+                 recheck->setEnabled( false );
+                 auto* watcher = new QFutureWatcher< bool >( this );
+                 connect( watcher,
+                          &QFutureWatcher< bool >::finished,
+                          this,
+                          [ this, watcher, recheck ]
+                          {
+                              if ( auto* queue = Calamares::JobQueue::instance() )
+                              {
+                                  queue->globalStorage()->insert( QStringLiteral( "hasInternet" ), watcher->result() );
+                              }
+                              m_config->evaluate( detectEnvironment( false ) );
+                              recheck->setEnabled( true );
+                              watcher->deleteLater();
+                          } );
+                 watcher->setFuture( QtConcurrent::run( pingInternet ) );
+             } );
     statusRow->addWidget( recheck, 0, Qt::AlignTop );
     m_layout->addLayout( statusRow );
     m_hint = new QLabel( this );

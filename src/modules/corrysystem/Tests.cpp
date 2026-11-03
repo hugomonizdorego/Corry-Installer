@@ -194,6 +194,14 @@ CorrySystemTests::testFirmwareSecureBootAndFilesystems()
     QVERIFY( config.option( QStringLiteral( "refind" ) )->reason.contains( QStringLiteral( "encrypted" ) ) );
     QVERIFY( config.option( QStringLiteral( "systemd-boot" ) )->available );
 
+    // Neither reads LVM either.
+    Environment lvm = efi;
+    lvm.bootLvm = true;
+    config.evaluate( lvm );
+    QVERIFY( !config.option( QStringLiteral( "refind" ) )->available );
+    QVERIFY( config.option( QStringLiteral( "refind" ) )->reason.contains( QStringLiteral( "LVM" ) ) );
+    QVERIFY( config.option( QStringLiteral( "systemd-boot" ) )->available );
+
     // EXTLINUX would overwrite another system's boot code.
     Environment dualBoot = bios;
     dualBoot.otherSystems = true;

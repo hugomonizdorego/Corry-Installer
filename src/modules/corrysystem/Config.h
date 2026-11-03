@@ -49,6 +49,7 @@ struct Environment
     QString bootFilesystem;  ///< Filesystem of /boot (or /); empty when unknown.
     bool bootCompressed = false;  ///< Btrfs with compression (Corry's default).
     bool bootEncrypted = false;  ///< /boot (or / without a /boot) is inside LUKS.
+    bool bootLvm = false;  ///< /boot (or / without a /boot) is an LVM logical volume.
     bool otherSystems = false;  ///< os-prober found another operating system.
     bool efi32 = false;  ///< 32-bit UEFI firmware (a 64-bit CPU started through GRUB's i386-efi).
     bool systemdInit = true;  ///< The init system chosen on the init page is systemd (the default).
@@ -58,6 +59,12 @@ struct Environment
  * connection is tested again (synchronously) instead of using the last result.
  */
 Environment detectEnvironment( bool recheckNetwork = false );
+/** @brief Test the internet connection now (blocking, at most a few seconds per URL).
+ *
+ * Unlike Network::Manager::checkHasInternet() it holds no lock while it waits,
+ * so it may run in a worker thread while the pages keep reading the last result.
+ */
+bool pingInternet();
 QString debianArchitecture( const QString& cpuArchitecture );
 /// @brief "stable" or "testing" from the contents of /etc/debian_version; empty if unknown.
 QString debianBase( const QString& debianVersion );

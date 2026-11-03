@@ -22,7 +22,10 @@ if ! details=$(/usr/bin/python3 /usr/lib/corry/preflight.py 2>&1); then
  printf '%s\n' "$details" >&2
  # Kept for the user, to copy into a bug report or a forum question.
  saved=
- if [[ ! -L $log_directory ]] && mkdir -p -- "$log_directory" 2>/dev/null && [[ -w $log_directory ]] \
+ # As root, only into a folder root owns (another account's folder could hold planted links).
+ owner=$(stat -c %u -- "$log_directory" 2>/dev/null || echo "$EUID")
+ if [[ ! -L $log_directory ]] && [[ $EUID != 0 || $owner == 0 ]] && mkdir -p -- "$log_directory" 2>/dev/null \
+    && [[ -w $log_directory ]] \
     && printf 'Corry Installer could not start (%s).\n\n%s\n' "$(date -Iseconds)" "$details" \
        > "$log_directory/preflight-error.log.$$" 2>/dev/null \
     && mv -fT -- "$log_directory/preflight-error.log.$$" "$log_directory/preflight-error.log"; then

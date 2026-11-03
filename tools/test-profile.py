@@ -795,7 +795,8 @@ class InitTests(unittest.TestCase):
             if '-s' in args and 'purge' in args:
                 requested = args[args.index('purge') + 1:]
                 # Purging systemd itself may drag another package along (purge_extra).
-                return ''.join(f'Remv {p} [1]\n' for p in requested) + (purge_extra if 'systemd' in requested else '')
+                # A simulated purge reports "Purg", as real apt does.
+                return ''.join(f'Purg {p} [1]\n' for p in requested) + (purge_extra if 'systemd' in requested else '')
             if args[0] == 'dpkg-query' and '-W' in args:
                 return 'ii ' if args[-1] in ('systemd-sysv', 'libpam-systemd', 'systemd', 'sysvinit-core', 'sysv-rc') else 'un '
             if args[0] == 'readlink':
@@ -889,9 +890,26 @@ class InitTests(unittest.TestCase):
         message = fake.values['corrySystem']['init']['message']
         self.assertTrue(all(name in message for name in ['removed:', 'systemd-sysv', 'libpam-systemd', 'systemd']), message)
 
+    def test_resolved_stub_link_is_replaced_after_the_switch(self):
+        module = load_module('corryinit', fake_calamares(process_output=lambda args, *rest: 'un '))
+        with tempfile.TemporaryDirectory() as temp:
+            etc = Path(temp) / 'etc'
+            etc.mkdir()
+            (etc / 'resolv.conf').symlink_to('../run/systemd/resolve/stub-resolv.conf')
+            self.assertTrue(module.fix_resolv_conf(temp))
+            self.assertFalse((etc / 'resolv.conf').is_symlink())
+            self.assertIn('systemd-resolved', (etc / 'resolv.conf').read_text())
+            # A regular file, or a link to something else, stays as it is.
+            self.assertFalse(module.fix_resolv_conf(temp))
+        module = load_module('corryinit', fake_calamares(process_output=lambda args, *rest: 'ii '))
+        with tempfile.TemporaryDirectory() as temp:
+            (Path(temp) / 'etc').mkdir()
+            (Path(temp) / 'etc/resolv.conf').symlink_to('../run/systemd/resolve/stub-resolv.conf')
+            self.assertFalse(module.fix_resolv_conf(temp))  # systemd-resolved still installed
+
     def test_systemd_stays_when_something_still_needs_it(self):
         # Purging systemd would also remove another package: keep it, drop only what is safe.
-        result, calls, fake = self.setup(purge_extra='Remv something-else [1]\n')
+        result, calls, fake = self.setup(purge_extra='Purg something-else [1]\n')
         purges = [c for c in calls if 'apt-get' in c and 'purge' in c and '-s' not in c]
         self.assertEqual(len(purges), 1)
         self.assertEqual(sorted(purges[0][purges[0].index('purge') + 1:]), ['libpam-systemd', 'systemd-sysv'])
@@ -1388,7 +1406,8 @@ class PreflightTests(unittest.TestCase):
             session_log = temp / 'cache/calamares/session.log'
             session_log.parent.mkdir(parents=True)
             session_log.write_text('12:00:01 [6]: unpackfs ...\n12:00:02 [1]: something broke\n')
-            for code, crashed in [(0, False), (139, True)]:
+            # 87: a second start while Corry runs, not a crash.
+            for code, crashed in [(0, False), (87, False), (139, True)]:
                 (stubs / 'engine').write_text(f'#!/bin/sh\nexit {code}\n')
                 (stubs / 'engine').chmod(0o755)
                 session = (ROOT / 'tools/corry-session').read_text().replace('/usr/bin/calamares', str(stubs / 'engine'))

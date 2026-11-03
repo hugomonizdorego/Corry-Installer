@@ -54,7 +54,7 @@ def online(url, timeout=10):
     try:
         with urllib.request.urlopen(url, timeout=timeout):
             return True
-    except (OSError, ValueError):
+    except Exception:  # OSError, ValueError, http.client.HTTPException (a non-HTTP answer)
         return False
 
 
@@ -126,7 +126,8 @@ def plan(action, packages):
         return None
     LAST_APT_OUTPUT = text or ""
     installed = set(re.findall(r"^Inst (\S+)", text, re.M))
-    removed = set(re.findall(r"^Remv (\S+)", text, re.M))
+    # A simulated install says "Remv", a simulated purge "Purg".
+    removed = set(re.findall(r"^(?:Remv|Purg) (\S+)", text, re.M))
     return installed, removed
 
 
@@ -163,6 +164,26 @@ def init_owner():
     path = (output(["readlink", "-f", "/sbin/init"], 60) or "").strip()
     text = output(["dpkg-query", "-S", path], 60) if path else None
     return text.splitlines()[-1].split(":", 1)[0].strip() if text else ""
+
+
+RESOLVED_STUB = "run/systemd/resolve/"
+RESOLV_NOTE = ("# Written by Corry Installer: systemd-resolved went away with systemd.\n"
+               "# The network manager (or the DHCP client) writes the name servers here.\n")
+
+
+def fix_resolv_conf(root):
+    """Replace /etc/resolv.conf when it still points to systemd-resolved, which is gone.
+
+    Debian's systemd-resolved makes it a link to /run/systemd/resolve/; without
+    the service that link points nowhere and the new system resolves no names.
+    """
+    path = Path(root) / "etc/resolv.conf"
+    if not path.is_symlink() or RESOLVED_STUB not in str(path.readlink()) or installed("systemd-resolved"):
+        return False
+    path.unlink()
+    path.write_text(RESOLV_NOTE)
+    path.chmod(0o644)
+    return True
 
 
 def record(system, init, result, message):
@@ -282,6 +303,11 @@ def run():
             if not done and not installed("systemd-sysv"):
                 call(APT + ["install", "systemd-sysv"], 0)
         if done:
+            try:
+                if fix_resolv_conf(root):
+                    libcalamares.utils.debug("Corry: /etc/resolv.conf no longer points to systemd-resolved.")
+            except OSError as exc:
+                warn("/etc/resolv.conf could not be replaced: {}".format(exc))
             removed = REMOVED_BY_SWITCH + [p for p in purged if p not in REMOVED_BY_SWITCH]
             message = "{} is the init system; removed: {}.".format(name, ", ".join(removed) if removed else "nothing")
             libcalamares.utils.debug("Corry: " + message)

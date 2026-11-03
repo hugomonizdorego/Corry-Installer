@@ -709,6 +709,7 @@ publishPlannedLayout( const PartitionCoreModule* core )
         planned.append( QVariantMap { { QStringLiteral( "mountPoint" ), mountPoint },
                                       { QStringLiteral( "fs" ), Calamares::Partition::untranslatedFS( *fs ) },
                                       { QStringLiteral( "encrypted" ), encrypted },
+                                      { QStringLiteral( "lvm" ), partition->roles().has( PartitionRole::Lvm_Lv ) },
                                       { QStringLiteral( "device" ), partition->partitionPath() } } );
     }
     Calamares::JobQueue::instance()->globalStorage()->insert( QStringLiteral( "corryPlannedPartitions" ), planned );
@@ -717,12 +718,14 @@ publishPlannedLayout( const PartitionCoreModule* core )
 void
 PartitionViewStep::onLeave()
 {
-    publishPlannedLayout( m_core );
     if ( m_widget->currentWidget() == m_choicePage )
     {
+        // "Install alongside" creates / only here, so publish afterwards.
         m_choicePage->onLeave();
+        publishPlannedLayout( m_core );
         return;
     }
+    publishPlannedLayout( m_core );
 
     const auto* branding = Calamares::Branding::instance();
 

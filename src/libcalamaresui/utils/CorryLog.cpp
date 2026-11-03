@@ -19,6 +19,7 @@
 #include <QStandardPaths>
 
 #include <cstdio>
+#include <fcntl.h>
 #include <pwd.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -68,20 +69,24 @@ desktopUser()
     return user;
 }
 
-/// Give @p path to the desktop user, with permissions @p mode.
+/// Give the folder @p path to the desktop user, with permissions @p mode.
+/// Opened with O_NOFOLLOW, so a link swapped in for it is never followed.
 void
 handOver( const QString& path, mode_t mode )
 {
-    const QByteArray local = QFile::encodeName( path );
-    const auto user = desktopUser();
-    if ( user.known && geteuid() == 0 )
+    const int fd = ::open( QFile::encodeName( path ).constData(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC );
+    if ( fd < 0 )
     {
-        if ( ::lchown( local.constData(), user.uid, user.gid ) != 0 )
-        {
-            cWarning() << "Corry: could not give" << path << "to" << user.name;
-        }
+        cWarning() << "Corry: could not open" << path;
+        return;
     }
-    ::chmod( local.constData(), mode );
+    const auto user = desktopUser();
+    if ( user.known && geteuid() == 0 && ::fchown( fd, user.uid, user.gid ) != 0 )
+    {
+        cWarning() << "Corry: could not give" << path << "to" << user.name;
+    }
+    ::fchmod( fd, mode );
+    ::close( fd );
 }
 
 /// /tmp/Corry as a real directory (never through a symbolic link).
@@ -89,7 +94,13 @@ bool
 prepareDirectory( const QString& directory )
 {
     const QFileInfo info( directory );
-    if ( info.isSymLink() || ( info.exists() && !info.isDir() ) )
+    // Only a real folder owned by root or by the desktop user is used; anything
+    // else (a link, a file, another user's folder) is moved aside.
+    struct stat status;
+    const auto user = desktopUser();
+    const bool foreign = ::lstat( QFile::encodeName( directory ).constData(), &status ) == 0 && S_ISDIR( status.st_mode )
+        && status.st_uid != 0 && !( user.known && status.st_uid == user.uid ) && status.st_uid != geteuid();
+    if ( info.isSymLink() || ( info.exists() && !info.isDir() ) || foreign )
     {
         // Something else is in the way; move it aside rather than follow it.
         const QString aside = directory + QStringLiteral( ".old-" ) + QString::number( QDateTime::currentSecsSinceEpoch() );
@@ -160,13 +171,20 @@ writeFile( const QString& path, const QByteArray& data )
         cWarning() << "Corry: could not write" << path;
         return false;
     }
+    // Owner and mode are set on the open file, before it is visible under its
+    // name: nothing path-based that a swapped-in link could redirect.
+    const auto user = desktopUser();
+    ::fchmod( file.handle(), 0600 );
+    if ( user.known && geteuid() == 0 && ::fchown( file.handle(), user.uid, user.gid ) != 0 )
+    {
+        cWarning() << "Corry: could not give" << path << "to" << user.name;
+    }
     if ( ::rename( QFile::encodeName( file.fileName() ).constData(), QFile::encodeName( path ).constData() ) != 0 )
     {
         cWarning() << "Corry: could not move the log to" << path;
         return false;
     }
     file.setAutoRemove( false );
-    handOver( path, 0600 );
     return true;
 }
 }  // namespace

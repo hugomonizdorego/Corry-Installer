@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Corry's "Init system" and "Boot loader" pages (two instances of this module).
-find_package(${qtname} ${QT_VERSION} CONFIG REQUIRED Core Gui Widgets Network)
+find_package(${qtname} ${QT_VERSION} CONFIG REQUIRED Core Gui Widgets Network Concurrent)
 
 include_directories(${PROJECT_BINARY_DIR}/src/libcalamaresui)
 
@@ -12,6 +12,8 @@ calamares_add_plugin(corrysystem
         Config.cpp
         CorrySystemPage.cpp
         CorrySystemViewStep.cpp
+    LINK_PRIVATE_LIBRARIES
+        ${qtname}::Concurrent
     SHARED_LIB
 )
 

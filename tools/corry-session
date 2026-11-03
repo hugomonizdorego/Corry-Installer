@@ -7,15 +7,26 @@
 # desktop user, and a message says where it is.
 /usr/bin/calamares "$@"
 code=$?
-[ "$code" -eq 0 ] && exit 0
+# 87: Corry is already running (a second click on the shortcut); not a crash.
+case $code in 0|87) exit "$code";; esac
 directory=${CORRY_LOG_DIR:-/tmp/Corry}
 session=${XDG_CACHE_HOME:-${HOME:-/root}/.cache}/calamares/session.log
 user=${SUDO_UID:-${PKEXEC_UID:-}}
-# A real directory, never through a planted link.
-if [ -L "$directory" ] || { [ -e "$directory" ] && [ ! -d "$directory" ]; }; then
+[ "$user" != 0 ] || user=
+group=
+[ -z "$user" ] || group=$(getent passwd "$user" | cut -d: -f4)
+# Root writes only into a real folder that root owns: a planted link, a file,
+# or a folder of another account is moved aside first. The folder is given to
+# the desktop user only after the log is in place, so nothing can be swapped in.
+me=$(id -u)
+owner=$(stat -c %u -- "$directory" 2>/dev/null || echo none)
+if [ -L "$directory" ] || { [ -e "$directory" ] && [ ! -d "$directory" ]; } \
+   || { [ -d "$directory" ] && [ "$owner" != "$me" ] && [ "$owner" != "${user:-$me}" ]; }; then
  mv -f -- "$directory" "$directory.old-$$" || exit "$code"
 fi
 mkdir -p -- "$directory" || exit "$code"
+if [ "$me" = 0 ]; then chown -h 0:0 "$directory" || exit "$code"; fi
+chmod 700 "$directory" || exit "$code"
 log=$directory/crash-$(date +%Y%m%d-%H%M%S).log
 temporary=$(mktemp "$directory/.crash.XXXXXX") || exit "$code"
 {
@@ -24,11 +35,12 @@ temporary=$(mktemp "$directory/.crash.XXXXXX") || exit "$code"
  echo
  cat -- "$session" 2>/dev/null || echo "(no session log at $session)"
 } > "$temporary"
+if [ -n "$user" ]; then
+ chown -h "$user:${group:-$user}" "$temporary" 2>/dev/null || true
+fi
 mv -fT -- "$temporary" "$log"
-chmod 700 "$directory"
-chmod 600 "$log"
-if [ -n "$user" ] && [ "$user" != 0 ]; then
- chown "$user:$(id -g "$user" 2>/dev/null || echo "$user")" "$directory" "$log" 2>/dev/null || true
+if [ -n "$user" ]; then
+ chown -h "$user:${group:-$user}" "$directory" 2>/dev/null || true
 fi
 echo "Corry Installer stopped unexpectedly (exit code $code). Its log was saved to $log." >&2
 if command -v zenity >/dev/null 2>&1 && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then

@@ -24,9 +24,10 @@ case "${1:-}" in
 esac
 [ -n "$package" ] || { echo "No corry-edukasaun_*.deb or corry-debion_*.deb in $dir" >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
-# The installer's own configuration always comes from the new package: no
-# conffile question can stop the script.
-confnew="-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confnew"
+# The installer's own configuration always comes from the new package (an
+# edited copy is kept as *.dpkg-old), and no conffile question can stop the
+# script. (--force-confdef would keep an edited old file instead.)
+confnew="-o Dpkg::Options::=--force-confnew"
 apt-get update
 # Finish or undo whatever an earlier "dpkg -i" left half-installed.
 apt-get install -y --fix-broken || true
