@@ -36,6 +36,7 @@
 
 #include <kpmcore/core/device.h>
 #include <kpmcore/core/partition.h>
+#include <kpmcore/core/partitiontable.h>
 #include <kpmcore/fs/luks.h>
 
 #include <QFormLayout>
@@ -697,6 +698,10 @@ publishPlannedLayout( const PartitionCoreModule* core )
             continue;
         }
         FileSystem* fs = &partition->fileSystem();
+        // Only logical volumes scanned from disk carry the Lvm_Lv role; new ones
+        // are recognised by their table, the volume group (type vmd).
+        const bool lvm = partition->roles().has( PartitionRole::Lvm_Lv )
+            || ( partition->partitionTable() && partition->partitionTable()->type() == PartitionTable::vmd );
         bool encrypted = false;
         if ( auto* luks = dynamic_cast< FS::luks* >( fs ) )  // FS::luks2 derives from FS::luks.
         {
@@ -709,7 +714,7 @@ publishPlannedLayout( const PartitionCoreModule* core )
         planned.append( QVariantMap { { QStringLiteral( "mountPoint" ), mountPoint },
                                       { QStringLiteral( "fs" ), Calamares::Partition::untranslatedFS( *fs ) },
                                       { QStringLiteral( "encrypted" ), encrypted },
-                                      { QStringLiteral( "lvm" ), partition->roles().has( PartitionRole::Lvm_Lv ) },
+                                      { QStringLiteral( "lvm" ), lvm },
                                       { QStringLiteral( "device" ), partition->partitionPath() } } );
     }
     Calamares::JobQueue::instance()->globalStorage()->insert( QStringLiteral( "corryPlannedPartitions" ), planned );

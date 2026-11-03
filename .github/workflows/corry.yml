@@ -45,7 +45,7 @@ jobs:
           version=$(cat VERSION)
           mkdir -p dist
           cp ../corry-${{ matrix.distro }}_*.deb dist/
-          ! ls ../*dbgsym* 2>/dev/null
+          if ls ../*dbgsym* 2>/dev/null; then echo 'Debug symbol packages were built'; exit 1; fi
           cp tools/install-corry-debs.sh dist/
           printf '%s\n' "Corry $version for ${{ matrix.product }} (Debian ${{ matrix.debian }})" '' \
             'Install (needs internet for the dependencies):' \
@@ -66,7 +66,9 @@ jobs:
             status=$(dpkg-query -W -f='${db:Status-Abbrev}' "$package" 2>/dev/null || true)
             test -z "$status" || test "$status" = "un " || { echo "$package is still $status"; exit 1; }
           done
-          ! ls /etc/xdg/autostart/calamares-desktop-icon.desktop /usr/share/applications/install-debian.desktop 2>/dev/null
+          if ls /etc/xdg/autostart/calamares-desktop-icon.desktop /usr/share/applications/install-debian.desktop 2>/dev/null; then
+            echo 'Calamares launchers are left'; exit 1
+          fi
           test "$(readlink -f /usr/bin/install-debian)" = /usr/bin/corry-installer
           dpkg-query -S /etc/calamares/settings.conf | grep -q '^corry-${{ matrix.distro }}:'
           grep -q 'productName: ${{ matrix.product }}' /etc/calamares/branding/corry/branding.desc
@@ -79,7 +81,7 @@ jobs:
           # SVG images (logo, slides, icons) need Qt's SVG image plugin.
           ls /usr/lib/*/qt6/plugins/imageformats/libqsvg.so
           # The preflight check runs and reports the missing live image (no ISO here).
-          ! /usr/lib/corry/preflight.py --config /etc/calamares 2> preflight.txt
+          if /usr/lib/corry/preflight.py --config /etc/calamares 2> preflight.txt; then echo 'The preflight check passed without a live image'; exit 1; fi
           grep -q 'Live system image not found' preflight.txt
       - name: Start the installed Corry on a virtual display
         run: |
@@ -88,9 +90,10 @@ jobs:
           mkdir -p /tmp/smoke && cd /tmp/smoke
           LANG=en_US.UTF-8 timeout 40 xvfb-run -a -s '-screen 0 1280x860x24' calamares -d > calamares.log 2>&1 || true
           grep -E 'Using Calamares|Loaded branding' calamares.log
-          ! grep -E 'FATAL|Cowardly refusing|QML component not ready' calamares.log
+          # ("if": under bash -e a line starting with "!" never stops the step.)
+          if grep -E 'FATAL|Cowardly refusing|QML component not ready' calamares.log; then exit 1; fi
           # Every module loads, and the QML header or side menu and the welcome image work.
-          ! grep -E 'Initialization Failed|could not be loaded|Failed to load module|failed to load|QML Component \(default slideshow\) Error|\.qml:[0-9]+:' calamares.log
+          if grep -E 'Initialization Failed|could not be loaded|Failed to load module|failed to load|QML Component \(default slideshow\) Error|\.qml:[0-9]+:' calamares.log; then exit 1; fi
           grep -q 'Using Calamares settings file at "/etc/calamares/settings.conf"' calamares.log
           grep -q 'Using Calamares QML directory "/usr/share/calamares/qml"' calamares.log
           grep -q 'Using Calamares branding file at "/etc/calamares/branding/corry/branding.desc"' calamares.log
@@ -98,8 +101,10 @@ jobs:
       - name: Remove Corry completely, shortcut included
         run: |
           apt-get purge -y corry-${{ matrix.distro }}
-          ! ls -d /etc/calamares /usr/lib/corry /usr/share/calamares /etc/apt/apt.conf.d/80corry-remove-calamares \
-            /home/live/Desktop/corry-installer.desktop 2>/dev/null
+          for path in /etc/calamares /usr/lib/corry /usr/share/calamares /etc/apt/apt.conf.d/80corry-remove-calamares \
+              /usr/share/polkit-1/actions/io.github.corry-installer.session.policy /home/live/Desktop/corry-installer.desktop; do
+            if [ -e "$path" ]; then echo "$path is left after the purge"; exit 1; fi
+          done
       - name: Repair a failed "dpkg -i" with the install script
         run: |
           # Remove one dependency, then do what users did: dpkg -i fails half-way.

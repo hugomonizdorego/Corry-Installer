@@ -211,6 +211,11 @@ for module in $(python3 -c 'import sys, yaml; print(" ".join(yaml.safe_load(open
    echo "--- EFI partition"; find "$t/boot/efi" -maxdepth 4 2>/dev/null | head -40 || true
    for f in "$t"/boot/efi/EFI/*/grub.cfg; do [[ -f $f ]] && { echo "--- $f"; cat "$f"; }; done
    [[ ! -d $t/boot/efi/loader ]] || { echo "--- systemd-boot"; cat "$t/boot/efi/loader/loader.conf" "$t"/boot/efi/loader/entries/*.conf || true; }
+   case $loader in
+    systemd-boot) [[ -f $t/boot/efi/EFI/systemd/systemd-bootx64.efi && ! -e $t/boot/grub ]] \
+                   || { echo "systemd-boot is not on the EFI partition, or GRUB is still there"; exit 1; };;
+    grub) [[ -f $t/boot/grub/grub.cfg ]] || { echo "GRUB's grub.cfg is missing"; exit 1; };;
+   esac
    for m in bootloader corrybootloader corrygrub grubcfg; do
     [[ -f $work/job-$m.log ]] && { echo "--- job-$m.log (warnings)"; grep -E "WARNING|ERROR|grub-install|Installing for|No error" "$work/job-$m.log" | tail -n 15 || true; }
    done
@@ -218,12 +223,17 @@ for module in $(python3 -c 'import sys, yaml; print(" ".join(yaml.safe_load(open
   *) run "$module";;
  esac
 done
-python3 - "$gs" <<'PY'
+python3 - "$gs" "$init" "$loader" <<'PY'
 import sys, yaml
 system = yaml.safe_load(open(sys.argv[1])).get('corrySystem', {})
 for section in ('init', 'bootloader'):
     print(section, '->', (system.get(section) or {}).get('installed') or (system.get(section) or {}).get('id'),
           (system.get(section) or {}).get('message', ''))
+# A quiet fallback to systemd or GRUB is a failure of this scenario.
+init = (system.get('init') or {}).get('installed') or (system.get('init') or {}).get('id', 'systemd')
+loader = (system.get('bootloader') or {}).get('id', 'grub')
+if init != sys.argv[2] or loader != sys.argv[3]:
+    sys.exit('Requested {} with {}, but {} with {} was installed'.format(sys.argv[2], sys.argv[3], init, loader))
 PY
 cleanup; trap - EXIT
 
