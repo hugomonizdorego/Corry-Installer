@@ -40,9 +40,17 @@ medium=$work/medium
 if [[ ! -f $medium/live/filesystem.squashfs ]]; then
  rootfs=$work/rootfs
  rm -rf "$rootfs"
- debootstrap --variant=minbase \
-  --include=linux-image-amd64,systemd-sysv,initramfs-tools,locales,keyboard-configuration,sudo,dbus,ca-certificates,grub-common,grub-pc-bin,grub-efi-amd64-bin,efibootmgr,btrfs-progs,dosfstools,e2fsprogs,kmod,udev \
-  "$base" "$rootfs" http://deb.debian.org/debian
+ debootstrap --variant=minbase --include=ca-certificates "$base" "$rootfs" http://deb.debian.org/debian \
+  || { tail -n 40 "$rootfs/debootstrap/debootstrap.log"; exit 1; }
+ # What a live image has: a kernel, an init system and the tools the jobs use.
+ mount -t proc proc "$rootfs/proc"
+ mount --bind /dev "$rootfs/dev"
+ printf '#!/bin/sh\nexit 101\n' > "$rootfs/usr/sbin/policy-rc.d"; chmod 755 "$rootfs/usr/sbin/policy-rc.d"
+ chroot "$rootfs" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  linux-image-amd64 initramfs-tools systemd-sysv udev kmod dbus locales keyboard-configuration sudo \
+  grub-common grub-pc-bin grub-efi-amd64-bin efibootmgr btrfs-progs dosfstools e2fsprogs
+ rm -f "$rootfs/usr/sbin/policy-rc.d"
+ umount "$rootfs/dev" "$rootfs/proc"
  # The marker: the installed system reports its init and powers off.
  cat > "$rootfs/etc/systemd/system/corry-e2e.service" <<'EOF'
 [Unit]
@@ -98,6 +106,12 @@ if [[ $firmware == efi ]]; then esp=${loop}p1 root=${loop}p2; else esp= root=${l
 if [[ $fs == btrfs ]]; then mkfs.btrfs -f -L root "$root" >/dev/null; else mkfs.ext4 -F -q -L root "$root"; fi
 uuid() { blkid -s UUID -o value "$1"; }
 partuuid() { blkid -s PARTUUID -o value "$1"; }
+# What udev would create on a live system.
+mkdir -p /dev/disk/by-uuid /dev/disk/by-partuuid
+for part in $esp $root; do
+ ln -sf "$part" "/dev/disk/by-uuid/$(uuid "$part")"
+ ln -sf "$part" "/dev/disk/by-partuuid/$(partuuid "$part")"
+done
 
 log "Global storage, as the pages leave it"
 conf=$work/conf
@@ -154,7 +168,10 @@ change('unpackfs.conf', lambda d: d['unpack'][0].update(source=medium + '/live/f
 # The target must not see the firmware variables of the machine running the test.
 change('mount.conf', lambda d: d.update(extraMounts=[m for m in d.get('extraMounts', []) if m.get('fs') != 'efivarfs']))
 change('corrygrub.conf', lambda d: d.update(medium=medium))
-change('grubcfg.conf', lambda d: d.update(kernel_params=['console=ttyS0,115200']))
+change('grubcfg.conf', lambda d: (d.update(kernel_params=['console=ttyS0,115200']),
+                                    d.setdefault('defaults', {}).update(GRUB_TERMINAL='serial console',
+                                                                        GRUB_SERIAL_COMMAND='serial --unit=0 --speed=115200',
+                                                                        GRUB_TIMEOUT=2)))
 change('bootloader.conf', lambda d: d.update(kernelParams=['console=ttyS0,115200']))
 change('corrybootloader.conf', lambda d: d.update(kernelParams=['console=ttyS0,115200']))
 print(yaml.safe_dump(storage, sort_keys=False))
@@ -183,6 +200,21 @@ for module in $(python3 -c 'import sys, yaml; print(" ".join(yaml.safe_load(open
    chroot "$(target)" useradd -m -s /bin/bash -G sudo hugo
    echo 'hugo:corry-e2e' | chroot "$(target)" chpasswd
    echo corry-e2e > "$(target)/etc/hostname";;
+  umount)
+   log "Boot configuration of the installed system"
+   t=$(target)
+   echo "--- /etc/fstab"; grep -v '^#' "$t/etc/fstab" || true
+   echo "--- /etc/crypttab"; grep -v '^#' "$t/etc/crypttab" 2>/dev/null || true
+   echo "--- kernels"; ls "$t/boot" || true
+   echo "--- grub.cfg entries"; grep -E "^\s*(linux|search|menuentry)" "$t/boot/grub/grub.cfg" 2>/dev/null | head -12 || true
+   echo "--- /etc/default/grub"; grep -E "^GRUB_" "$t/etc/default/grub" 2>/dev/null || true
+   echo "--- EFI partition"; find "$t/boot/efi" -maxdepth 4 2>/dev/null | head -40 || true
+   for f in "$t"/boot/efi/EFI/*/grub.cfg; do [[ -f $f ]] && { echo "--- $f"; cat "$f"; }; done
+   [[ ! -d $t/boot/efi/loader ]] || { echo "--- systemd-boot"; cat "$t/boot/efi/loader/loader.conf"; cat "$t"/boot/efi/loader/entries/*.conf; }
+   for m in bootloader corrybootloader corrygrub grubcfg; do
+    [[ -f $work/job-$m.log ]] && { echo "--- job-$m.log (warnings)"; grep -E "WARNING|ERROR|grub-install|Installing for|No error" "$work/job-$m.log" | tail -n 15; }
+   done
+   run umount;;
   *) run "$module";;
  esac
 done
