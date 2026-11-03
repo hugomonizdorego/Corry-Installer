@@ -73,6 +73,17 @@ The first stable release, for Edukasaun OS (Debian stable) and DebION GNU/Linux
   logos, slides and icons could not be drawn) and on `fdisk`; they recommend the
   theme fonts, `ntfs-3g` and `exfatprogs`.
 
+- *Check again* on the Init system and Boot loader pages tests the internet in
+  the background with a timeout; a page change during a slow test could freeze
+  Corry before. *Install alongside* reaches the Boot loader page with its layout;
+  rEFInd and EXTLINUX are refused for `/boot` on LVM; system directories
+  (`/boot`, `/usr`, `/var`, …) need a Linux filesystem.
+- After the switch removes systemd-resolved, `/etc/resolv.conf` is no longer a
+  link to its stub; apt's simulated purge is read correctly; a non-HTTP answer
+  counts as offline.
+- `bootloader-name` must start with a plain ASCII word (it names GRUB's EFI
+  directory); `new-distro.py` sets it from the new name.
+
 ### Logs
 
 - A failed installation saves the whole log, with a short report on top, to
@@ -82,7 +93,9 @@ The first stable release, for Edukasaun OS (Debian stable) and DebION GNU/Linux
   A successful installation keeps its log there too.
 - If the engine stops unexpectedly, `corry-session` saves its log as
   `/tmp/Corry/crash-<date>.log`; a failed preflight check is saved to
-  `/tmp/Corry/preflight-error.log`.
+  `/tmp/Corry/preflight-error.log`. A second start while Corry runs is not a
+  crash. Root writes only into a folder it owns and sets owner and mode on the
+  open file, so planted links are never followed.
 
 ### Tests and tools
 
@@ -92,7 +105,11 @@ The first stable release, for Edukasaun OS (Debian stable) and DebION GNU/Linux
   and BIOS, Btrfs and ext4, systemd and SysVinit, GRUB and systemd-boot.
   Calamares' `loadmodule` can save global storage (`-G`) and fails with exit 1.
 - Release checks that the tag, `VERSION`, `debian/changelog` and this changelog
-  agree; the smoke test fails when a module or QML file does not load.
+  agree; the smoke test fails when a module or QML file does not load (CI checks
+  written as `! cmd` never failed a step under `bash -e`; they are enforced now).
+  The e2e test fails if a fallback installed another init or loader than chosen.
+- A final review of every 1.0 change (five reviewers, each finding checked by an
+  independent verifier) found the BIOS GRUB bug and the fixes above.
 - `corry-desktop-icon` writes every file in a home as its owner.
 - `install-corry-debs.sh` takes the newest package and never stops at a conffile
   question; `remove-calamares --purge` reports a failed purge.
