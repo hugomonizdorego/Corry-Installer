@@ -50,6 +50,7 @@ struct Environment
     bool bootCompressed = false;  ///< Btrfs with compression (Corry's default).
     bool bootEncrypted = false;  ///< /boot (or / without a /boot) is inside LUKS.
     bool otherSystems = false;  ///< os-prober found another operating system.
+    bool efi32 = false;  ///< 32-bit UEFI firmware (a 64-bit CPU started through GRUB's i386-efi).
     bool systemdInit = true;  ///< The init system chosen on the init page is systemd (the default).
 };
 

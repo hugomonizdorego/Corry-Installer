@@ -246,6 +246,13 @@ class BrandingTests(unittest.TestCase):
                 self.assertIn(version, header)
                 for source_header in branding.HEADERS.values():
                     self.assertFalse((brand / source_header).exists(), source_header)
+                # GRUB's EFI directory is what Debian's grub-efi upgrades derive from
+                # GRUB_DISTRIBUTOR (the boot menu name), so updates refresh it.
+                efi = {'edukasaun': 'edukasaun', 'debion': 'debion'}[distro]
+                self.assertEqual(yaml.safe_load((config / 'modules/bootloader.conf').read_text())['efiBootloaderId'], efi)
+                self.assertEqual(yaml.safe_load((config / 'modules/corrybootloader.conf').read_text())['grubEfiDirectory'],
+                                 efi)
+                self.assertEqual(desc['strings']['bootloaderEntryName'], {'edukasaun': 'Edukasaun', 'debion': 'DebION'}[distro])
                 for page in ['corrysystem-init', 'corrysystem-bootloader']:
                     self.assertEqual(yaml.safe_load((config / f'modules/{page}.conf').read_text())['base'],
                                      source['debian'], page)
@@ -305,7 +312,8 @@ class BrandingTests(unittest.TestCase):
                     self.assertIn(conflict, [c.strip() for c in fields[field].split(',')], (name, field))
             self.assertIn('calamares', fields['Provides'])
             install = (ROOT / f'debian/{name}.install').read_text()
-            for path in ['usr/bin/calamares', 'tools/remove-calamares', 'tools/corry-desktop-icon',
+            for path in ['usr/bin/calamares', 'tools/remove-calamares', 'tools/corry-desktop-icon', 'tools/corry-session',
+                         'config/corry/polkit/io.github.corry-installer.session.policy',
                          'config/corry/apt/80corry-remove-calamares']:
                 self.assertIn(path, install)
             postinst = (ROOT / f'debian/{name}.postinst').read_text()
@@ -452,6 +460,13 @@ esac
             self.assertGreaterEqual(contrast(colors['on-accent'], colors['accent-dark']), 3.0, name)
         with self.assertRaisesRegex(branding.BrandingError, 'unknown theme token'):
             branding.themed_text('color: "@nope@"', {}, 'test')
+
+    def test_efi_directory_follows_grub_distributor(self):
+        branding = self.branding()
+        self.assertEqual(branding.efi_directory('DebION'), 'debion')
+        self.assertEqual(branding.efi_directory('Edukasaun OS'), 'edukasaun')
+        self.assertEqual(branding.efi_directory('Devuan GNU+Linux'), 'debian')
+        self.assertEqual(branding.efi_directory(''), 'debian')
 
     def test_derived_accent_shades(self):
         branding = self.branding()
@@ -617,6 +632,9 @@ class GrubTests(unittest.TestCase):
         self.assertEqual(grub.wanted('efi', 'amd64'), ('grub-efi-amd64', 'x86_64-efi'))
         self.assertEqual(grub.wanted('bios', 'amd64'), ('grub-pc', 'i386-pc'))
         self.assertEqual(grub.wanted('bios', 'arm64'), (None, None))
+        # 32-bit UEFI firmware with a 64-bit CPU: GRUB's i386-efi platform.
+        self.assertEqual(grub.wanted('efi', 'amd64', '32'), ('grub-efi-ia32', 'i386-efi'))
+        self.assertEqual(grub.wanted('efi', 'amd64', '64'), ('grub-efi-amd64', 'x86_64-efi'))
         self.assertIsNotNone(grub.run())  # No target mounted.
         with tempfile.TemporaryDirectory() as temp:
             medium = Path(temp) / 'medium'
@@ -1088,6 +1106,24 @@ class BootLoaderTests(unittest.TestCase):
         self.assertIn('GRUB is installed instead', fake.log.warnings[-1])
         self.assertFalse(any('apt-get' in c for c in calls), calls)  # checked before anything is downloaded
 
+    def test_32_bit_uefi_keeps_grub(self):
+        with tempfile.TemporaryDirectory() as temp:
+            module = load_module('corrybootloader', fake_calamares())
+            with patch.object(Path, 'read_text', return_value='32\n'):
+                self.assertEqual(module.efi_bits(), '32')
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_root(temp)
+            values = {'rootMountPoint': temp, 'firmwareType': 'efi', 'efiSystemPartition': '/boot/efi',
+                      'partitions': self.partitions(fs='ext4'),
+                      'corrySystem': {'bootloader': {'id': 'systemd-boot', 'name': 'systemd-boot',
+                                                     'packages': ['systemd-boot']}}}
+            calls = []
+            fake = fake_calamares(values, {}, lambda args, *rest: calls.append(args) or 0)
+            module = load_module('corrybootloader', fake)
+            with patch.object(module, 'efi_bits', return_value='32'):
+                self.assertIsNone(module.run())
+            self.assert_falls_back(fake, calls, '32-bit UEFI')
+
     def test_unsuitable_layouts_keep_grub(self):
         encrypted = self.partitions(fs='ext4')
         encrypted[1]['luksMapperName'] = 'luks-root'
@@ -1281,6 +1317,41 @@ class PreflightTests(unittest.TestCase):
         development = (ROOT / 'docs/CORRY-DEVELOPMENT.md').read_text()
         for code in ['| 0 |', '| 1 |', '| 2 |', '| 4 |', '| 126, 127 |']:
             self.assertIn(code, development)
+
+    def test_logs_are_kept_in_tmp_corry(self):
+        # The launcher saves a failed preflight check; corry-session saves the log
+        # of an engine that crashed. Both go to /tmp/Corry (here CORRY_LOG_DIR).
+        with tempfile.TemporaryDirectory() as temp:
+            temp = Path(temp)
+            logs, stubs = temp / 'Corry', temp / 'stubs'
+            stubs.mkdir()
+            (stubs / 'preflight.py').write_text('import sys\nprint("Live system image not found", file=sys.stderr)\nsys.exit(2)\n')
+            launcher = (ROOT / 'tools/corry-installer').read_text() \
+                .replace('/usr/lib/corry/preflight.py', str(stubs / 'preflight.py')).replace('-x /usr/bin/calamares', '-x /bin/sh')
+            result = subprocess.run(['bash', '-c', launcher, 'corry-installer'], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    text=True, env={'PATH': '/usr/bin:/bin', 'CORRY_LOG_DIR': str(logs), 'HOME': temp})
+            self.assertEqual(result.returncode, 2)
+            self.assertIn('Live system image not found', (logs / 'preflight-error.log').read_text())
+
+            session_log = temp / 'cache/calamares/session.log'
+            session_log.parent.mkdir(parents=True)
+            session_log.write_text('12:00:01 [6]: unpackfs ...\n12:00:02 [1]: something broke\n')
+            for code, crashed in [(0, False), (139, True)]:
+                (stubs / 'engine').write_text(f'#!/bin/sh\nexit {code}\n')
+                (stubs / 'engine').chmod(0o755)
+                session = (ROOT / 'tools/corry-session').read_text().replace('/usr/bin/calamares', str(stubs / 'engine'))
+                result = subprocess.run(['sh', '-c', session, 'corry-session'], stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE, text=True,
+                                        env={'PATH': '/usr/bin:/bin', 'CORRY_LOG_DIR': str(logs),
+                                             'XDG_CACHE_HOME': str(temp / 'cache')})
+                self.assertEqual(result.returncode, code)
+                crashes = sorted(logs.glob('crash-*.log'))
+                self.assertEqual(bool(crashes), crashed)
+            text = crashes[0].read_text()
+            self.assertIn('stopped unexpectedly (exit code 139)', text)
+            self.assertIn('something broke', text)
+            self.assertEqual(crashes[0].stat().st_mode & 0o777, 0o600)
+            self.assertIn(str(crashes[0]), result.stderr)
 
     def test_preflight_missing_image(self):
         preflight = self.preflight()

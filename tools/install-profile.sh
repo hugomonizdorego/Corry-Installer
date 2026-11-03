@@ -82,7 +82,11 @@ if [[ $package == yes ]]; then
 fi
 install -d "$destination/usr/lib/corry"
 install -m755 "$repo/tools/preflight.py" "$destination/usr/lib/corry/"
-install -m755 "$repo/tools/remove-calamares" "$repo/tools/corry-desktop-icon" "$destination/usr/lib/corry/"
+install -m755 "$repo/tools/remove-calamares" "$repo/tools/corry-desktop-icon" "$repo/tools/corry-session" \
+ "$destination/usr/lib/corry/"
+# pkexec starts corry-session on the user's desktop only with this policy.
+install -D -m644 "$repo/config/corry/polkit/io.github.corry-installer.session.policy" \
+ "$destination/usr/share/polkit-1/actions/io.github.corry-installer.session.policy"
 install -m755 "$repo/tools/corry-installer" "$destination/usr/bin/corry-installer"
 install -d "$destination/etc/xdg/autostart"
 install -m644 "$repo/config/corry/corry-desktop-icon.desktop" "$destination/etc/xdg/autostart/"
@@ -107,7 +111,8 @@ manifest="$destination/usr/lib/corry/manifest"
  printf '%s\n' /etc/calamares /usr/lib/corry /usr/bin/corry-installer /usr/share/applications/corry-installer.desktop \
   /etc/xdg/autostart/corry-desktop-icon.desktop /etc/xdg/autostart/corry-installer.desktop \
   /usr/local/share/applications/calamares.desktop /usr/local/share/applications/install-debian.desktop \
-  /usr/local/bin/install-debian /usr/share/icons/hicolor/scalable/apps/corry-installer.svg
+  /usr/local/bin/install-debian /usr/share/icons/hicolor/scalable/apps/corry-installer.svg \
+  /usr/share/polkit-1/actions/io.github.corry-installer.session.policy
 } | sort -u > "$manifest.new"
 mv "$manifest.new" "$manifest"
 echo "Corry $(cat "$repo/VERSION") profile installed for $product and set as the default installer. Run corry-installer from the live session."

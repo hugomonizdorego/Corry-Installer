@@ -17,6 +17,7 @@
 #include <optional>
 
 class Config;
+class QPushButton;
 namespace Ui
 {
 class FinishedPage;
@@ -39,6 +40,7 @@ protected:
 private:
     Ui::FinishedPage* ui;
     std::optional< QString > m_failure;
+    QPushButton* m_openLog = nullptr;  ///< Corry: opens /tmp/Corry/install.log
 };
 
 #endif  // FINISHEDPAGE_H

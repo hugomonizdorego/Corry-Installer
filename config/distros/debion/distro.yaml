@@ -6,7 +6,7 @@
 # Names shown in the installer, the window title and the GRUB menu.
 name: DebION GNU/Linux
 short-name: DebION GNU/Linux
-bootloader-name: DebION GNU/Linux
+bootloader-name: DebION
 # Product version. Empty: taken from VERSION_ID in the live system's /etc/os-release.
 version: ''
 

@@ -34,6 +34,7 @@ INSTALLER_PATHS = (
     "usr/share/pixmaps/corry-installer.png",
     "usr/bin/calamares",
     "usr/share/polkit-1/actions/com.github.calamares.calamares.policy",
+    "usr/share/polkit-1/actions/io.github.corry-installer.session.policy",
     "usr/share/metainfo/io.calamares.calamares.appdata.xml",
     "usr/share/man/man8/calamares.8.gz",
     "etc/calamares",

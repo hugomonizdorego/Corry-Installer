@@ -16,6 +16,7 @@ set(calamaresui_SOURCES
     modulesystem/ModuleManager.cpp
     modulesystem/ProcessJobModule.cpp
     modulesystem/ViewModule.cpp
+    utils/CorryLog.cpp
     utils/Gui.cpp
     utils/ImageRegistry.cpp
     utils/Paste.cpp
@@ -89,3 +90,4 @@ foreach(subdir modulesystem utils viewpages widgets)
 endforeach()
 
 calamares_add_test(test_libcalamaresuipaste SOURCES utils/TestPaste.cpp utils/Paste.cpp LIBRARIES calamaresui)
+calamares_add_test(corrylogtest SOURCES utils/TestCorryLog.cpp LIBRARIES calamaresui)

@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Corry Installer launcher.
 # Exit codes: 0 finished or closed by the user; 2 the preflight check failed
-# (the reasons are printed and shown in a dialog); 4 the installer engine is
-# not installed; 126/127 administrator rights were refused (pkexec); any other
-# code comes from the engine itself (1: it stopped with an error).
+# (the reasons are printed, shown in a dialog and saved to
+# /tmp/Corry/preflight-error.log); 4 the installer engine is not installed;
+# 126/127 administrator rights were refused (pkexec); any other code comes from
+# the engine itself (it stopped unexpectedly; /tmp/Corry/crash-<date>.log).
+# A failed installation keeps its complete log in /tmp/Corry/install.log.
 set -euo pipefail
 # Corry speaks US English by default. Another language can still be chosen on
 # the welcome page, or set CORRY_LANG before starting the installer.
@@ -15,16 +17,30 @@ if [[ ! -x /usr/bin/calamares ]]; then
  echo 'Corry cannot start: the installer engine (/usr/bin/calamares) is not installed.' >&2
  exit 4
 fi
+log_directory=${CORRY_LOG_DIR:-/tmp/Corry}
 if ! details=$(/usr/bin/python3 /usr/lib/corry/preflight.py 2>&1); then
  printf '%s\n' "$details" >&2
+ # Kept for the user, to copy into a bug report or a forum question.
+ saved=
+ if [[ ! -L $log_directory ]] && mkdir -p -- "$log_directory" 2>/dev/null && [[ -w $log_directory ]] \
+    && printf 'Corry Installer could not start (%s).\n\n%s\n' "$(date -Iseconds)" "$details" \
+       > "$log_directory/preflight-error.log.$$" 2>/dev/null \
+    && mv -fT -- "$log_directory/preflight-error.log.$$" "$log_directory/preflight-error.log"; then
+  saved="\n\nSaved to $log_directory/preflight-error.log."
+ fi
  # Show failures from the desktop too, without a terminal requirement.
- if command -v zenity >/dev/null; then zenity --error --title='Corry Installer' --text="$details"; fi
+ if command -v zenity >/dev/null && [[ -n ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]]; then
+  zenity --error --title='Corry Installer' --text="$details$saved" || true
+ fi
  exit 2
 fi
 # No -c: that option is for testing and makes Calamares look for its QML files
 # under /etc/calamares. Without it, /etc/calamares (settings, modules, branding)
 # and /usr/share/calamares/qml are used, as installed by the packages.
-if [[ $EUID == 0 ]]; then exec /usr/bin/calamares; fi
+# corry-session runs the engine and keeps its log in /tmp/Corry if it crashes.
+session=/usr/lib/corry/corry-session
+[[ -x $session ]] || session=/usr/bin/calamares
+if [[ $EUID == 0 ]]; then exec "$session"; fi
 # The installer runs as root but must reach the live user's display and sound
 # server (for the background music). Debian live users have passwordless sudo,
 # which can keep that environment; pkexec cannot, so it is only the fallback.
@@ -36,6 +52,6 @@ fi
 export XDG_RUNTIME_DIR=$runtime PIPEWIRE_RUNTIME_DIR=$runtime
 if sudo -n true 2>/dev/null; then
  exec sudo -n --preserve-env=DISPLAY,XAUTHORITY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,PIPEWIRE_RUNTIME_DIR,PULSE_SERVER,PULSE_COOKIE,LANG,LANGUAGE,QT_QPA_PLATFORM \
-  /usr/bin/calamares
+  "$session"
 fi
-exec pkexec /usr/bin/calamares
+exec pkexec "$session"

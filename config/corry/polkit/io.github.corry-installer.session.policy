@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: no
+     SPDX-License-Identifier: CC0-1.0
+     Corry Installer: lets pkexec start the installer session (which keeps
+     the installation log in /tmp/Corry if the installer stops unexpectedly)
+     on the user's desktop. -->
+<!DOCTYPE policyconfig PUBLIC
+"-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+"http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+ <vendor>Corry Installer</vendor>
+ <vendor_url>https://github.com/hugomonizdorego/Corry-Installer</vendor_url>
+
+ <action id="io.github.corry-installer.session.run">
+    <description>Run Corry Installer</description>
+    <message>Authentication is required to install the operating system</message>
+    <icon_name>drive-harddisk</icon_name>
+    <defaults>
+     <allow_any>no</allow_any>
+     <allow_inactive>no</allow_inactive>
+     <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/corry/corry-session</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+ </action>
+</policyconfig>

@@ -1,0 +1,39 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Corry Installer session, started as root by corry-installer (sudo or pkexec).
+# Runs the installer engine. A failed installation saves its own log to
+# /tmp/Corry/install.log; if the engine itself stops unexpectedly (a crash),
+# its session log is saved here as /tmp/Corry/crash-<date>.log, owned by the
+# desktop user, and a message says where it is.
+/usr/bin/calamares "$@"
+code=$?
+[ "$code" -eq 0 ] && exit 0
+directory=${CORRY_LOG_DIR:-/tmp/Corry}
+session=${XDG_CACHE_HOME:-${HOME:-/root}/.cache}/calamares/session.log
+user=${SUDO_UID:-${PKEXEC_UID:-}}
+# A real directory, never through a planted link.
+if [ -L "$directory" ] || { [ -e "$directory" ] && [ ! -d "$directory" ]; }; then
+ mv -f -- "$directory" "$directory.old-$$" || exit "$code"
+fi
+mkdir -p -- "$directory" || exit "$code"
+log=$directory/crash-$(date +%Y%m%d-%H%M%S).log
+temporary=$(mktemp "$directory/.crash.XXXXXX") || exit "$code"
+{
+ echo "Corry Installer stopped unexpectedly (exit code $code) on $(date -Iseconds)."
+ echo "The installer's session log follows; the last lines show what it was doing."
+ echo
+ cat -- "$session" 2>/dev/null || echo "(no session log at $session)"
+} > "$temporary"
+mv -fT -- "$temporary" "$log"
+chmod 700 "$directory"
+chmod 600 "$log"
+if [ -n "$user" ] && [ "$user" != 0 ]; then
+ chown "$user:$(id -g "$user" 2>/dev/null || echo "$user")" "$directory" "$log" 2>/dev/null || true
+fi
+echo "Corry Installer stopped unexpectedly (exit code $code). Its log was saved to $log." >&2
+if command -v zenity >/dev/null 2>&1 && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+ zenity --error --title='Corry Installer' \
+  --text="Corry Installer stopped unexpectedly (exit code $code).\n\nIts log was saved to $log. Open it in a text editor to copy it when you ask for help." \
+  >/dev/null 2>&1 || true
+fi
+exit "$code"

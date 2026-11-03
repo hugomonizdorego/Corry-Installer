@@ -199,6 +199,14 @@ def partition_table(disk):
     return (result.stdout.strip() if result and result.returncode == 0 else "") or "unknown"
 
 
+def efi_bits():
+    """ "32" on 32-bit UEFI firmware (64-bit CPU), else "64"."""
+    try:
+        return Path("/sys/firmware/efi/fw_platform_size").read_text().strip() or "64"
+    except OSError:
+        return "64"
+
+
 def esp_path():
     return libcalamares.globalstorage.value("efiSystemPartition") or "/boot/efi"
 
@@ -615,7 +623,8 @@ def run():
     TIMEOUT = int(configuration.get("timeout", 5))
     firmware = libcalamares.globalstorage.value("firmwareType") or "bios"
     branding = libcalamares.globalstorage.value("branding") or {}
-    product = branding.get("bootloaderEntryName") or branding.get("productName") or "Linux"
+    # The full product name; GRUB's bootloaderEntryName gets " GNU/Linux" from 10_linux.
+    product = branding.get("productName") or branding.get("bootloaderEntryName") or "Linux"
     problems = []
     cmdline = kernel_params(configuration)
     purged = None
@@ -627,6 +636,8 @@ def run():
         problems.append("{} needs UEFI; this computer started in BIOS mode".format(name))
     elif wanted == "extlinux" and firmware == "efi":
         problems.append("EXTLINUX is a BIOS boot loader; this computer started with UEFI")
+    elif firmware == "efi" and efi_bits() == "32":
+        problems.append("this computer has 32-bit UEFI; only GRUB is installed for it")
     elif firmware == "efi" and not partition_at(esp_path()):
         problems.append("no EFI system partition is mounted on " + esp_path())
     elif unsuitable(wanted, loader):

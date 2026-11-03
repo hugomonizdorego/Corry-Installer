@@ -253,6 +253,16 @@ def branding_desc(data):
     }
 
 
+def efi_directory(bootloader_name):
+    """The EFI/<id> directory for GRUB: the lowercased first word of the boot menu
+    name (GRUB_DISTRIBUTOR), as Debian's grub-install and grub-efi-* postinst
+    derive it, so package upgrades refresh the copy Corry installed."""
+    words = str(bootloader_name).split()
+    first = words[0].lower() if words else 'debian'
+    first = {'kubuntu': 'ubuntu', 'devuan': 'debian'}.get(first, first)
+    return re.sub(r'[^a-z0-9._-]', '', first) or 'debian'
+
+
 def update_conf(path, change):
     data = yaml.safe_load(path.read_text())
     change(data)
@@ -305,6 +315,9 @@ def apply(folder, config, image, version):
     update_conf(modules / 'corrygrub.conf', lambda d: d.update(medium=medium, checkUrl=url))
     for name in ['corryupdate.conf', 'corryinit.conf', 'corrybootloader.conf']:
         update_conf(modules / name, lambda d: d.update(checkUrl=url))
+    efi = efi_directory(data['bootloader-name'])
+    update_conf(modules / 'bootloader.conf', lambda d: d.update(efiBootloaderId=efi))
+    update_conf(modules / 'corrybootloader.conf', lambda d: d.update(grubEfiDirectory=efi))
     # The init system and boot loader pages offer only what the base's archive has.
     for name in ['corrysystem-init.conf', 'corrysystem-bootloader.conf']:
         update_conf(modules / name, lambda d: d.update(base=data['debian']))

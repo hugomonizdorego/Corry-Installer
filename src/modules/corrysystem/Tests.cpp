@@ -178,6 +178,14 @@ CorrySystemTests::testFirmwareSecureBootAndFilesystems()
     QVERIFY( !config.option( QStringLiteral( "refind" ) )->available );
     QVERIFY( config.option( QStringLiteral( "systemd-boot" ) )->available );  // kernels on the ESP
 
+    // 32-bit UEFI (tablets): GRUB only.
+    Environment efi32 = efi;
+    efi32.efi32 = true;
+    config.evaluate( efi32 );
+    QVERIFY( config.option( QStringLiteral( "grub" ) )->available );
+    QVERIFY( !config.option( QStringLiteral( "systemd-boot" ) )->available );
+    QVERIFY( config.option( QStringLiteral( "systemd-boot" ) )->reason.contains( QStringLiteral( "32-bit" ) ) );
+
     // Neither rEFInd nor EXTLINUX can read LUKS; systemd-boot keeps kernels on the ESP.
     Environment encrypted = efi;
     encrypted.bootEncrypted = true;

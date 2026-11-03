@@ -17,12 +17,14 @@
 #include "Branding.h"
 #include "Settings.h"
 #include "compat/CheckBox.h"
+#include "utils/CorryLog.h"
 #include "utils/Retranslator.h"
 
 #include <QFocusEvent>
 #include <QLabel>
 #include <QIcon>
 #include <QFile>
+#include <QPushButton>
 
 
 FinishedPage::FinishedPage( Config* config, QWidget* parent )
@@ -48,6 +50,12 @@ FinishedPage::FinishedPage( Config* config, QWidget* parent )
             ui->verticalLayout->insertWidget( ui->verticalLayout->indexOf( ui->mainText ), picture );
         }
         ui->mainText->setObjectName( "corryFinishedText" );
+        // The installation log in /tmp/Corry, saved by Corry when the jobs end.
+        m_openLog = new QPushButton( this );
+        m_openLog->setObjectName( QStringLiteral( "corryOpenLogButton" ) );
+        m_openLog->setVisible( false );
+        ui->verticalLayout->insertWidget( ui->verticalLayout->indexOf( ui->mainText ) + 1, m_openLog, 0, Qt::AlignHCenter );
+        connect( m_openLog, &QPushButton::clicked, this, [] { Corry::openInTextEditor( Corry::lastSavedLog() ); } );
     }
 
     connect( config,
@@ -84,6 +92,11 @@ FinishedPage::onInstallationFailed( const QString& message, const QString& detai
 void
 FinishedPage::retranslate()
 {
+    if ( m_openLog )
+    {
+        m_openLog->setText( tr( "Open the installation log" ) );
+        m_openLog->setVisible( !Corry::lastSavedLog().isEmpty() );
+    }
 
     const auto* branding = Calamares::Branding::instance();
 
@@ -146,10 +159,12 @@ FinishedPage::retranslate()
         {
             ui->mainText->setText( tr( "<h1>The installation stopped</h1>"
                                        "<p>%1 could not be installed: %2.</p>"
-                                       "<p>Press <i>Show details</i> on the previous page for the full log, check the "
+                                       "<p>The complete log is in <b>%3</b>. Open it in a text editor, look for the "
+                                       "lines with ERROR or WARNING, and copy it when you ask for help. Check the "
                                        "disk and the installation media, then try again.</p>" )
                                        .arg( branding->shortProductName() )
-                                       .arg( message ) );
+                                       .arg( message )
+                                       .arg( Corry::logDirectory() + QStringLiteral( "/install.log" ) ) );
         }
         else
         {

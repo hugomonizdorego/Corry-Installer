@@ -85,6 +85,8 @@ FinishedViewStep::isAtEnd() const
 void
 FinishedViewStep::onActivate()
 {
+    // Corry: the installation log was saved when the jobs ended; offer it.
+    m_widget->retranslate();
     m_config->doNotify();
     connect( qApp, &QApplication::aboutToQuit, m_config, qOverload<>( &Config::doRestart ) );
 }

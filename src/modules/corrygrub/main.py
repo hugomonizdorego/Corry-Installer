@@ -22,9 +22,21 @@ def pretty_name():
     return "Install boot loader packages"
 
 
-def wanted(firmware, arch):
+def efi_bits():
+    """ "32" on 32-bit UEFI firmware (tablets with a 64-bit CPU), else "64"."""
+    try:
+        return Path("/sys/firmware/efi/fw_platform_size").read_text().strip() or "64"
+    except OSError:
+        return "64"
+
+
+def wanted(firmware, arch, bits="64"):
     """Return the (package, GRUB platform directory) pair, or (None, None)."""
     if firmware == "efi":
+        # 32-bit UEFI starts amd64 Debian through GRUB's i386-efi platform,
+        # which the bootloader module installs there (grub-install --target=i386-efi).
+        if bits == "32" and arch in ("amd64", "i386"):
+            return "grub-efi-ia32", "i386-efi"
         return EFI_PACKAGES.get(arch), EFI_PLATFORMS.get(arch)
     if arch in ("amd64", "i386"):
         return "grub-pc", "i386-pc"
@@ -168,13 +180,15 @@ def run():
     firmware = libcalamares.globalstorage.value("firmwareType")
     arch = subprocess.run(["dpkg", "--print-architecture"], stdout=subprocess.PIPE,
                           text=True).stdout.strip()
-    package, platform = wanted(firmware, arch)
+    bits = efi_bits() if firmware == "efi" else "64"
+    package, platform = wanted(firmware, arch, bits)
     if not package:
         libcalamares.utils.warning("No GRUB package is known for {} on {}.".format(firmware, arch))
         return None
     problem = None if installed(root, package) else obtain(root, package)
     if problem is None:
-        secure_boot_packages(root, firmware, arch)
+        if bits != "32":  # Debian has no signed shim for 32-bit UEFI.
+            secure_boot_packages(root, firmware, arch)
         return None
     # grub-install only needs the platform files. Without the package the system
     # still boots, but GRUB is not updated automatically. Warn instead of failing.

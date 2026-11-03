@@ -17,6 +17,7 @@
 #include "JobQueue.h"
 #include "Settings.h"
 
+#include "utils/CorryLog.h"
 #include "utils/Logger.h"
 #include "utils/Paste.h"
 #include "utils/Retranslator.h"
@@ -29,6 +30,7 @@
 #include "widgets/TranslationFix.h"
 
 #include <QApplication>
+#include <QPushButton>
 #include <QLabel>
 #include <QBoxLayout>
 #include <QClipboard>
@@ -85,6 +87,19 @@ ViewManager::ViewManager( QObject* parent )
     updateButtonLabels();
 
     connect( JobQueue::instance(), &JobQueue::failed, this, &ViewManager::onInstallationFailed );
+    // Corry: a successful installation keeps its log in /tmp/Corry too. A failed
+    // one was saved by onInstallationFailed (the queue still sends finished).
+    connect( JobQueue::instance(),
+             &JobQueue::finished,
+             this,
+             []
+             {
+                 const auto* branding = Calamares::Branding::instance();
+                 if ( branding && branding->componentName() == QStringLiteral( "corry" ) && Corry::lastSavedLog().isEmpty() )
+                 {
+                     Corry::saveInstallLog( QStringLiteral( "finished" ), QString(), QString() );
+                 }
+             } );
     connect( JobQueue::instance(), &JobQueue::finished, this, &ViewManager::next );
 
     CALAMARES_RETRANSLATE_SLOT( &ViewManager::updateButtonLabels );
@@ -274,8 +289,47 @@ ViewManager::onInstallationFailed( const QString& message, const QString& detail
     errorDialog->setInformativeText( message );
     errorDialog->setShouldOfferWebPaste( Calamares::Branding::instance()->uploadServer() );
     errorDialog->setDetails( details );
+
+    const bool corry = isCorry();
+    if ( corry )
+    {
+        // The whole log goes to /tmp/Corry/install.log, owned by the desktop
+        // user, to open in a text editor, copy and act on.
+        const QString log = Corry::saveInstallLog( QStringLiteral( "failed" ), message, details );
+        const QString where = log.isEmpty()
+            ? QCoreApplication::translate( "Corry", "The installation log could not be copied; it is in %1." )
+                  .arg( Logger::logFile() )
+            : QCoreApplication::translate( "Corry",
+                                           "The complete installation log was saved to <b>%1</b>. Open it in a text "
+                                           "editor to see what went wrong and to copy it." )
+                  .arg( log );
+        errorDialog->setInformativeText( message + QStringLiteral( "<p>" ) + where + QStringLiteral( "</p>" ) );
+        if ( auto* buttons = errorDialog->findChild< QDialogButtonBox* >() )
+        {
+            auto* open = buttons->addButton( QCoreApplication::translate( "Corry", "Open log" ),
+                                             QDialogButtonBox::ActionRole );
+            open->setObjectName( QStringLiteral( "corryOpenLogButton" ) );
+            open->setEnabled( !log.isEmpty() );
+            connect( open, &QPushButton::clicked, errorDialog, [ log ] { Corry::openInTextEditor( log ); } );
+        }
+    }
     errorDialog->show();
 
+    if ( corry )
+    {
+        // Corry stays open on the Finished page, which explains the failure and
+        // opens the log; Done closes it. Restarting is off after a failure.
+        connect( errorDialog,
+                 &QDialog::finished,
+                 [ errorDialog ]( int result )
+                 {
+                     if ( result == QDialog::Accepted && errorDialog->shouldOfferWebPaste() )
+                     {
+                         Calamares::Paste::doLogUploadUI( errorDialog );
+                     }
+                 } );
+        return;
+    }
     cDebug() << "Calamares will quit when the dialog closes.";
     connect( errorDialog,
              &QDialog::finished,

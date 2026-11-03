@@ -88,6 +88,10 @@ detectEnvironment( bool recheckNetwork )
         environment.firmware = gs->value( QStringLiteral( "firmwareType" ) ).toString();
     }
     environment.architecture = debianArchitecture( QSysInfo::currentCpuArchitecture() );
+    {
+        QFile platform( QStringLiteral( "/sys/firmware/efi/fw_platform_size" ) );
+        environment.efi32 = platform.open( QIODevice::ReadOnly ) && platform.readAll().trimmed() == "32";
+    }
     environment.secureBoot = environment.firmware == QStringLiteral( "efi" ) && secureBootEnabled();
     environment.gnome
         = QFile::exists( QStringLiteral( "/usr/sbin/gdm3" ) ) || QFile::exists( QStringLiteral( "/usr/bin/gnome-shell" ) );
@@ -295,6 +299,13 @@ Config::evaluateBootLoader( Option& option, const Environment& environment )
         option.available = false;
         option.reason = efi ? QCoreApplication::translate( "Corry", "This computer starts with UEFI; this loader is for BIOS." )
                             : QCoreApplication::translate( "Corry", "This computer starts in BIOS mode; this loader needs UEFI." );
+        return;
+    }
+    if ( efi && environment.efi32 && !option.isDefault )
+    {
+        option.available = false;
+        option.reason = QCoreApplication::translate(
+            "Corry", "This computer has 32-bit UEFI firmware; only GRUB is installed for it." );
         return;
     }
     if ( environment.secureBoot && !option.secureBoot )
