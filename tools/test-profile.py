@@ -207,7 +207,7 @@ class SequenceTests(unittest.TestCase):
         self.assertEqual((locale['region'], locale['zone']), ('Asia', 'Dili'))
         self.assertFalse(locale['useSystemTimezone'])
         self.assertEqual(locale['geoip']['style'], 'none')
-        self.assertEqual((ROOT / 'VERSION').read_text().strip(), '0.3')
+        self.assertEqual((ROOT / 'VERSION').read_text().strip(), '1.0')
 
 
 class BrandingTests(unittest.TestCase):

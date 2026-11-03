@@ -1,6 +1,98 @@
 <!-- SPDX-License-Identifier: CC0-1.0 -->
 # Corry changelog
 
+## 1.0 — stable
+
+The first stable release, for Edukasaun OS (Debian stable) and DebION GNU/Linux
+(Debian testing).
+
+### Look
+
+- **A theme per distribution** (`config/themes`, chosen with `theme:` in
+  `distro.yaml`): **soft-blue** for DebION — neumorphic light-blue cards with a
+  soft highlight, a timeline header on top — and **warm-pastel** for Edukasaun
+  OS — cream page, a rounded mint side menu of numbered steps, a salmon welcome
+  card, coral pill buttons and mint/salmon/yellow/blue cards. Every color,
+  the fonts and the corner radius come from the theme; `colors:` in
+  `distro.yaml` overrides single colors. Branding sources use `@token@`
+  placeholders, checked by `tools/corry-branding.py` (unknown tokens are errors).
+- **Images only**: the welcome video, its player and its generator are gone; an
+  old `welcome.video` line is ignored with a note. Default slides take the
+  theme's tile colors.
+- Combo boxes have a themed chevron, checked boxes a tick, radios stay round,
+  the welcome title wraps, the side-menu layout gets a 1240px window and
+  pages scroll instead of being cut on small screens.
+
+### Init system and boot loader
+
+- **Two pages** instead of one: *Init system* and *Boot loader*
+  (`corrysystem@init`, `corrysystem@bootloader`). Each lists only options whose
+  packages exist on the distribution's Debian base (`availableOn`, written per
+  distribution as `base:`): SysVinit, OpenRC and runit on both bases;
+  systemd-boot and Syslinux/EXTLINUX on both; rEFInd on stable only. U-Boot is
+  no longer offered (Corry's packages are amd64). CI checks every offered
+  package against the real archives and switches to SysVinit, OpenRC and runit
+  for real on both bases.
+- The boot loader page sees the **planned partitions** (published by the
+  partition page) and refuses rEFInd/EXTLINUX for an encrypted `/boot`,
+  EXTLINUX for compressed Btrfs or next to another operating system, and every
+  alternative on 32-bit UEFI. `corrybootloader` checks again with the real
+  partition list, and also refuses EXTLINUX on a logical partition or next to
+  another active partition, before anything is downloaded.
+
+### Installation safety
+
+- `corryinit` and `corrybootloader` read command output with
+  `check_target_env_output`; `target_env_process_output` returns only the exit
+  code in Calamares 3.3, which made every alternative init choice fail. The test
+  fakes now follow the real API.
+- Packages are **downloaded first** (safe to interrupt on a slow line) and then
+  installed without a time limit, so dpkg is never killed half-way.
+- A **reused EFI partition** keeps other systems' `EFI/…` directories and boot
+  entries; only an EFI partition formatted by this installation is cleaned.
+- An unexpected error in `corryinit`, `corrybootloader`, `corryupdate` or
+  `corrycleanup` becomes a warning; the system keeps systemd or GRUB.
+- `corrycleanup` marks the system's own tools (cryptsetup, lvm2, GRUB, sudo…)
+  as manually installed before Corry is purged, so `apt autoremove` cannot break
+  the boot, and a refused purge no longer stops the installation.
+- **Encrypted root**: crypttab without `keyscript=/bin/cat` (nothing created the
+  key file, so the root could not be unlocked).
+- GRUB's EFI directory follows `GRUB_DISTRIBUTOR` (`debion`, `edukasaun`), as
+  Debian's grub-efi upgrades expect; boot menu names no longer repeat
+  "GNU/Linux". With Secure Boot the removable-media path gets the shim chain;
+  `grub-install` is retried without an NVRAM entry when the firmware refuses
+  one. 32-bit UEFI gets GRUB for `i386-efi`.
+- Manual partitioning allows LVM physical volumes, LUKS and Windows data
+  partitions (writable by the new user, never blocking the boot); GParted
+  rescans the disks in place; *Check again* no longer starts parallel checks.
+- The packages depend on Qt's **SVG image plugin** (it was missing, so SVG
+  logos, slides and icons could not be drawn) and on `fdisk`; they recommend the
+  theme fonts, `ntfs-3g` and `exfatprogs`.
+
+### Logs
+
+- A failed installation saves the whole log, with a short report on top, to
+  **`/tmp/Corry/install.log`** (and a dated copy), owned by the desktop user. The
+  error dialog names the file and has **Open log**; Corry then stays on the
+  Finished page, which explains where the log is and opens it in a text editor.
+  A successful installation keeps its log there too.
+- If the engine stops unexpectedly, `corry-session` saves its log as
+  `/tmp/Corry/crash-<date>.log`; a failed preflight check is saved to
+  `/tmp/Corry/preflight-error.log`.
+
+### Tests and tools
+
+- **End-to-end test** (`tools/ci/e2e-install.sh`, CI job `e2e`): a small Debian
+  live image is installed with the packaged job modules into a disk image, which
+  is booted in QEMU and must report its init system and root filesystem — UEFI
+  and BIOS, Btrfs and ext4, systemd and SysVinit, GRUB and systemd-boot.
+  Calamares' `loadmodule` can save global storage (`-G`) and fails with exit 1.
+- Release checks that the tag, `VERSION`, `debian/changelog` and this changelog
+  agree; the smoke test fails when a module or QML file does not load.
+- `corry-desktop-icon` writes every file in a home as its owner.
+- `install-corry-debs.sh` takes the newest package and never stops at a conffile
+  question; `remove-calamares --purge` reports a failed purge.
+
 ## 0.3 — pre-release
 
 - **New look.** A light blue page with soft white cards (painted by the new

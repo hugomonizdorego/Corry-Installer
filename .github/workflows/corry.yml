@@ -156,7 +156,7 @@ jobs:
       - name: With GDM installed the switch is refused and systemd stays
         run: |
           python3 tools/ci/run-job.py corryinit --root / --allow-live-root --storage storage.json | tee out.txt
-          grep -q 'gdm3 need systemd' out.txt
+          grep -q 'gdm3.* need systemd' out.txt
           test "$(readlink -f /sbin/init)" = /usr/lib/systemd/systemd
           python3 -c "import json; s = json.load(open('storage.json')); assert s['corrySystem']['init']['installed'] == 'systemd', s"
       - name: Without GDM the switch succeeds, /sbin/init belongs to ${{ matrix.init }} and systemd is purged

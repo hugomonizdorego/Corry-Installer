@@ -1,3 +1,28 @@
+corry (1.0) unstable; urgency=medium
+
+  * First stable release.
+  * Own look per distribution from a theme: soft-blue (DebION GNU/Linux,
+    Debian testing: neumorphic cards, header on top) and warm-pastel
+    (Edukasaun OS, Debian stable: mint side menu, coral buttons, pastel
+    cards). Images only: the welcome video is gone.
+  * Init system and boot loader on two separate pages, each offering only
+    what the base's archive has (CI checks every package). The boot loader
+    page checks the planned partitions: encryption, compressed Btrfs, other
+    operating systems, 32-bit UEFI.
+  * Safer jobs: command output read with the right API (the alternative
+    init systems could not be installed before), packages downloaded first
+    and installed without a time limit, a reused EFI partition left alone,
+    nothing that can be avoided stops the installation.
+  * The installation log is saved to /tmp/Corry (install.log, crash and
+    preflight logs), owned by the desktop user, with an "Open log" button.
+  * Fixes: encrypted root unlock (crypttab), GRUB's EFI directory follows
+    the distribution name, Secure Boot fallback path, 32-bit UEFI, the Qt
+    SVG plugin, manual LVM/LUKS partitioning, GParted rescans, desktop
+    shortcuts written as their owner, needed packages kept after cleanup.
+  * End-to-end test in CI: real jobs into a disk image, booted in QEMU.
+
+ -- Hugo Moniz do Rego <hugomonizdorego@angelinojoana.com>  Tue, 03 Nov 2026 13:00:00 +0000
+
 corry (0.3) unstable; urgency=medium
 
   * New look: light page, soft white cards, pill buttons and a gradient
