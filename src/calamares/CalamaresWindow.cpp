@@ -490,7 +490,7 @@ CalamaresWindow::CalamaresWindow( QWidget* parent )
                           ::getQmlSidebar,
                           // Corry's sidebar (themes with layout "left") is a menu of steps.
                           branding->componentName() == QStringLiteral( "corry" )
-                              ? qBound( 240, w / 4, 290 )
+                              ? qBound( 220, w / 5, 256 )
                               : qBound( 100, Calamares::defaultFontHeight() * 12, w < windowPreferredWidth ? 100 : 190 ) );
     QWidget* navigation = flavoredWidget( branding->navigationFlavor(),
                                           ::orientation( branding->navigationSide() ),

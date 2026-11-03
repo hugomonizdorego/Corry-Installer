@@ -192,8 +192,9 @@ def switch(root, configuration, packages, warn):
     libcalamares.utils.debug("Corry: switching init; apt will remove {}".format(sorted(simulated[1]) or "nothing"))
     REMOVED_BY_SWITCH[:] = sorted(simulated[1])
     # Download first: a slow line may be interrupted safely. The switch itself
-    # then runs without a time limit, so dpkg is never killed half-way.
-    if call(APT + ["--download-only", "install"] + list(packages), int(configuration.get("downloadTimeout", 7200))):
+    # then runs without a time limit, so dpkg is never killed half-way. Both
+    # get the same request: apt can only plan the new init with the removals.
+    if call(APT + ["--download-only", "install"] + request, int(configuration.get("downloadTimeout", 7200))):
         warn("the packages could not be downloaded")
         return False
     if call(APT + ["--no-download", "install"] + request, 0):

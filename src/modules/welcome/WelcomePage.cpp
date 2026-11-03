@@ -107,12 +107,14 @@ WelcomePage::setCorryPage( const QString& page )
     ui->horizontalLayout->setSpacing( 36 );
     ui->mainText->setAlignment( Qt::AlignLeft | Qt::AlignVCenter );
     QFont titleFont = ui->mainText->font();
-    titleFont.setPointSize( 30 );
+    titleFont.setPointSize( 28 );
     titleFont.setBold( true );
     ui->mainText->setFont( titleFont );
     ui->languageIcon->hide();
-    // Group title, text and controls in the vertical middle, left aligned.
-    ui->mainText->setSizePolicy( QSizePolicy::Preferred, QSizePolicy::Maximum );
+    // Group title, text and controls in the vertical middle, left aligned. The
+    // title wraps (long product names) and takes the height its lines need.
+    ui->mainText->setWordWrap( true );
+    ui->mainText->setSizePolicy( QSizePolicy::Preferred, QSizePolicy::Minimum );
     ui->aboveTextSpacer->changeSize( 0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding );
     for ( auto* spacer : { ui->horizontalSpacer, ui->horizontalSpacer_3, ui->horizontalSpacer_4 } )
     {
@@ -198,6 +200,10 @@ QWidget*
 WelcomePage::welcomeMedia()
 {
     const QString poster = Calamares::Branding::instance()->imagePath( Calamares::Branding::ProductWelcome );
+    // Next to a side menu (the warm-pastel theme) the page card is narrower.
+    const auto side = Calamares::Branding::instance()->sidebarSide();
+    const bool sideMenu = side == Calamares::Branding::PanelSide::Left || side == Calamares::Branding::PanelSide::Right;
+    const QSize frame = sideMenu ? QSize( 480, 270 ) : QSize( 560, 315 );
 #ifdef WITH_QML
     const QString qml = Calamares::Branding::instance()->componentDirectory() + QStringLiteral( "/welcome-media.qml" );
     if ( QFile::exists( qml ) )
@@ -211,7 +217,7 @@ WelcomePage::welcomeMedia()
         view->rootContext()->setContextProperty( QStringLiteral( "corryPoster" ), QUrl::fromLocalFile( poster ) );
         view->setSource( QUrl::fromLocalFile( qml ) );
         // Fixed 16:9 frame; see docs/BRANDING.md for the recommended media sizes.
-        view->setFixedSize( 560, 315 );
+        view->setFixedSize( frame );
         if ( view->status() != QQuickWidget::Error )
         {
             return view;
@@ -222,8 +228,8 @@ WelcomePage::welcomeMedia()
 #endif
     auto* image = new QLabel( this );
     image->setAlignment( Qt::AlignCenter );
-    image->setFixedSize( 560, 315 );
-    image->setPixmap( QIcon( poster ).pixmap( QSize( 560, 315 ) ) );
+    image->setFixedSize( frame );
+    image->setPixmap( QIcon( poster ).pixmap( frame ) );
     return image;
 }
 

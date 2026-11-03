@@ -51,11 +51,12 @@ OptionCard::OptionCard( const Option& option, QWidget* parent )
     column->setSpacing( 3 );
     row->addLayout( column, 1 );
 
-    auto* head = new QHBoxLayout;
-    head->setSpacing( 6 );
     auto* title = new QLabel( option.name, this );
     title->setObjectName( QStringLiteral( "corryOptionTitle" ) );
-    head->addWidget( title );
+    column->addWidget( title );
+    // Badges on their own row, so two cards fit side by side next to a side menu.
+    auto* head = new QHBoxLayout;
+    head->setSpacing( 6 );
     for ( const auto& text : option.badges )
     {
         // The same texts as Config::evaluate*() uses for its badges.

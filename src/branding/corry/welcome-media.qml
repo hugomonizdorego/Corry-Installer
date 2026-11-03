@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick 2.15
 import "media.js" as Media
-// Corry welcome page picture, in a soft card. Shown in a fixed 560x315 (16:9)
+// Corry welcome page picture, in a soft card. Shown in a fixed 560x315 (480x270 next to a side menu, 16:9)
 // frame; recommended image: 1600x900 PNG/JPEG or an SVG with a 16:9 viewBox.
 // Words between two at signs are theme tokens, replaced by tools/corry-branding.py.
 Item {

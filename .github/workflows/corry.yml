@@ -76,6 +76,8 @@ jobs:
           test -x "$shortcut" && test "$(stat -c %U "$shortcut")" = live
           grep -q 'Name=Install ${{ matrix.product }}' "$shortcut"
           test -f /usr/share/icons/hicolor/scalable/apps/corry-installer.svg
+          # SVG images (logo, slides, icons) need Qt's SVG image plugin.
+          ls /usr/lib/*/qt6/plugins/imageformats/libqsvg.so
           # The preflight check runs and reports the missing live image (no ISO here).
           ! /usr/lib/corry/preflight.py --config /etc/calamares 2> preflight.txt
           grep -q 'Live system image not found' preflight.txt

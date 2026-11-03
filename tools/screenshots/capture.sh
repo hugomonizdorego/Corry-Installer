@@ -20,7 +20,8 @@ from pathlib import Path
 config, demo = Path(sys.argv[1]), sys.argv[2]
 settings = yaml.safe_load((config / 'settings.conf').read_text())
 settings['modules-search'] = ['local', demo]
-settings['sequence'] = [{'show': ['welcome', 'welcome@check', 'locale', 'keyboard', 'users', 'corrysystem', 'summary']},
+settings['sequence'] = [{'show': ['welcome', 'welcome@check', 'locale', 'keyboard', 'users', 'corrysystem@init',
+                                   'corrysystem@bootloader', 'summary']},
                         {'exec': ['corrydemo']}, {'show': ['finished']}]
 (config / 'settings.conf').write_text(yaml.safe_dump(settings, sort_keys=False))
 check = yaml.safe_load((config / 'modules/welcomecheck.conf').read_text())
@@ -33,23 +34,31 @@ export DISPLAY=${DISPLAY:-:99}
 xdpyinfo >/dev/null 2>&1 || { Xvfb "$DISPLAY" -screen 0 1280x860x24 >/dev/null 2>&1 & sleep 1; }
 (cd "$build" && LANG=en_US.UTF-8 ./calamares -d -c "$config" > "$stage/calamares.log" 2>&1 &)
 sleep 18
-# The 1120x780 window is centered on the 1280x860 screen.
-shot() { xdotool mousemove 1270 850; sleep 0.5; import -window root -crop 1120x780+80+40 +repage "$out/$distro-$1.png"; }
+# The window (windowSize in branding.desc) is centered on the 1280x860 screen.
+size=$(python3 -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))["windowSize"].replace("px", ""))' \
+ "$config/branding/corry/branding.desc")
+width=${size%,*}; height=${size#*,}; left=$(( (1280 - width) / 2 )); top=$(( (860 - height) / 2 ))
+shot() { xdotool mousemove 1279 859; sleep 0.5; import -window root -crop "${width}x${height}+$left+$top" +repage "$out/$distro-$1.png"; }
 click() { xdotool mousemove "$1" "$2" click 1; sleep "${3:-1.5}"; }
-# The Next button is the gradient pill at the bottom right of the card.
-next() { click "${CORRY_NEXT_X:-978}" "${CORRY_NEXT_Y:-784}" 2; }
+# The Next button is the gradient pill at the bottom right of the window.
+next() { click "${CORRY_NEXT_X:-$(( left + width - 222 ))}" "${CORRY_NEXT_Y:-$(( top + height - 36 ))}" 2; }
+# Field positions inside the page card (see docs/screenshots to re-check):
+# name, password, repeated password, "same password for the administrator".
+if grep -q 'sidebar: qml,left' "$config/branding/corry/branding.desc"; then
+ fields=(456 214 456 436 706 436 350 520)   # side menu, 1240x780 window
+else
+ fields=(280 333 280 549 523 549 160 641)   # header on top, 1120x780 window
+fi
 shot 01-welcome; next
 sleep 2; shot 02-system-check; next
 shot 03-location; next
 shot 04-keyboard; next
-# Field positions inside Corry's page card (see docs/screenshots to re-check).
-click "${CORRY_NAME_X:-280}" "${CORRY_NAME_Y:-333}"; xdotool type --delay 20 'Hugo Moniz'
-click "${CORRY_PASS_X:-280}" "${CORRY_PASS_Y:-549}"; xdotool type a; click "${CORRY_PASS2_X:-523}" "${CORRY_PASS_Y:-549}"; xdotool type a
+click "${fields[0]}" "${fields[1]}"; xdotool type --delay 20 'Hugo Moniz'
+click "${fields[2]}" "${fields[3]}"; xdotool type a; click "${fields[4]}" "${fields[5]}"; xdotool type a
 shot 07-users
-click "${CORRY_ROOT_X:-160}" "${CORRY_ROOT_Y:-641}"; shot 08-users-admin-password; click "${CORRY_ROOT_X:-160}" "${CORRY_ROOT_Y:-641}"
+click "${fields[6]}" "${fields[7]}"; shot 08-users-admin-password; click "${fields[6]}" "${fields[7]}"
 next; shot 09-system-init
-# Scroll the page down to the boot loader cards.
-xdotool mousemove 640 480 click 5 click 5 click 5 click 5 click 5; sleep 1; shot 10-system-boot-loader
+next; shot 10-system-boot-loader
 next; shot 11-summary
 next; shot 12-confirm
 # "Install now" is the default button of the confirmation dialog.

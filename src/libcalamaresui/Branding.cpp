@@ -409,7 +409,9 @@ _stylesheet( const QDir& dir )
     {
         QFile stylesheetFile( importQSSPath.filePath() );
         stylesheetFile.open( QFile::ReadOnly );
-        return stylesheetFile.readAll();
+        // Corry: url(@BRANDING_DIR@/image.svg) names an image of the branding.
+        return QString::fromUtf8( stylesheetFile.readAll() )
+            .replace( QStringLiteral( "@BRANDING_DIR@" ), dir.absolutePath() );
     }
     else
     {

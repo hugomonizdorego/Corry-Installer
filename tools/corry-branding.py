@@ -36,8 +36,11 @@ THEME_COLORS = ('page', 'surface', 'surface-alt', 'border', 'text', 'text-muted'
                 'warning-bg', 'warning-text', 'danger-bg', 'danger-text', 'success')
 # Branding sources with theme tokens. The header is chosen by the theme's layout
 # and installed as calamares-sidebar.qml.
-THEMED = ['stylesheet.qss', 'corry-mark.svg', 'show.qml', 'SlideControl.qml', 'welcome-media.qml']
+THEMED = ['stylesheet.qss', 'corry-mark.svg', 'combo-arrow.svg', 'show.qml', 'SlideControl.qml', 'welcome-media.qml']
 HEADERS = {'top': 'sidebar-top.qml', 'left': 'sidebar-left.qml'}
+# The side menu takes about 250px, so that layout gets a wider window (both
+# shrink to fit smaller screens; pages then scroll instead of being cut).
+WINDOW_SIZES = {'top': '1120px,780px', 'left': '1240px,780px'}
 
 # Display sizes in the 1120x780 window, and what to provide for sharp results.
 # Slides: shown in a 16:9 card of about 600x338; provide 1600x900 (minimum 1280x720).
@@ -226,7 +229,7 @@ def branding_desc(data):
         'welcomeStyleCalamares': False,
         'welcomeExpandingLogo': True,
         'windowExpanding': 'normal',
-        'windowSize': '1120px,780px',
+        'windowSize': WINDOW_SIZES[data['theme-data']['layout']],
         'windowPlacement': 'center',
         'sidebar': 'qml,' + data['theme-data']['layout'],
         'navigation': 'widget',

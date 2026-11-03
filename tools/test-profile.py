@@ -859,7 +859,8 @@ class InitTests(unittest.TestCase):
         # explicit removal of the installed systemd packages (apt keeps manually
         # installed packages unless asked), and no time limit.
         downloads = [c for c in calls if 'apt-get' in c and '--download-only' in c]
-        self.assertEqual(downloads[0][downloads[0].index('install') + 1:], ['sysvinit-core', 'elogind', 'libpam-elogind'])
+        self.assertEqual(downloads[0][downloads[0].index('install') + 1:],
+                         ['sysvinit-core', 'elogind', 'libpam-elogind', 'systemd-sysv-', 'libpam-systemd-', 'systemd-'])
         installs = [c for c in calls if 'apt-get' in c and 'install' in c and '--no-download' in c]
         self.assertEqual(installs[0][installs[0].index('install') + 1:],
                          ['sysvinit-core', 'elogind', 'libpam-elogind', 'systemd-sysv-', 'libpam-systemd-', 'systemd-'])

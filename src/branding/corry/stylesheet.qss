@@ -57,7 +57,7 @@ QComboBox:hover, QLineEdit:hover, QSpinBox:hover { border-color: @accent-light@;
 QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus { border: 2px solid @accent@; background: @surface@; }
 QLineEdit { min-width: 220px; }
 QComboBox::drop-down { border: none; width: 30px; }
-QComboBox::down-arrow { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid @accent@; margin-right: 12px; }
+QComboBox::down-arrow { image: url(@BRANDING_DIR@/combo-arrow.svg); width: 12px; height: 8px; margin-right: 12px; }
 QSpinBox::up-button, QSpinBox::down-button { border: none; width: 22px; background: transparent; }
 QComboBox QAbstractItemView { background: @surface@; border: 1px solid @border@; border-radius: 12px; padding: 4px; selection-background-color: @tint@; selection-color: @text@; outline: none; }
 
@@ -87,9 +87,9 @@ QCheckBox::indicator { width: 20px; height: 20px; border-radius: 6px; border: 2p
 QCheckBox::indicator:hover { border-color: @accent@; }
 QCheckBox::indicator:checked { border-color: @accent@; background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 @accent@, stop:1 @accent-light@); }
 QCheckBox::indicator:disabled { border-color: @border@; background: @surface-alt@; }
-QRadioButton::indicator { width: 20px; height: 20px; border-radius: 11px; border: 2px solid @border@; background: @surface@; }
+QRadioButton::indicator { width: 16px; height: 16px; border-radius: 10px; border: 2px solid @border@; background: @surface@; }
 QRadioButton::indicator:hover { border-color: @accent@; }
-QRadioButton::indicator:checked { border: 6px solid @accent@; background: @surface@; }
+QRadioButton::indicator:checked { width: 8px; height: 8px; border: 6px solid @accent@; background: @surface@; }
 QRadioButton::indicator:disabled { border-color: @border@; background: @surface-alt@; }
 
 /* Progress and sliders */

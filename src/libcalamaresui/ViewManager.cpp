@@ -231,13 +231,13 @@ corryPage( ViewStep* step )
         layout->addWidget( subtitle );
         layout->addSpacing( 8 );
     }
-    // A page taller than the card (the time-zone map on a small screen)
-    // scrolls instead of overlapping its own controls.
+    // A page larger than the card (the time-zone map or the keyboard preview
+    // on a small screen) scrolls instead of overlapping or cutting its controls.
     auto* scroll = new QScrollArea( card );
     scroll->setObjectName( QStringLiteral( "corryPageScroll" ) );
     scroll->setWidgetResizable( true );
     scroll->setFrameShape( QFrame::NoFrame );
-    scroll->setHorizontalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
+    scroll->setHorizontalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     scroll->setWidget( step->widget() );
     layout->addWidget( scroll, 1 );
     return page;
