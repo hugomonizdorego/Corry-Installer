@@ -437,6 +437,7 @@ esac
                 (lambda d: d.update(colors={'accent': 'green'}), 'colors.accent'),
                 (lambda d: d.update(colors={'acent': '#123456'}), 'not a theme color'),
                 (lambda d: d.update(theme='neon'), 'Unknown theme'),
+                (lambda d: d.update({'bootloader-name': 'Educação OS'}), 'plain ASCII word'),
                 (lambda d: d.update(debian='sid'), 'Debian base'),
                 (lambda d: d.pop('debian'), 'Debian base'),
                 (lambda d: d['slides'][0].update(image='../escape.svg'), 'inside'),
@@ -552,6 +553,7 @@ esac
             data = yaml.safe_load((repo / 'config/distros/demo-os/distro.yaml').read_text())
             self.assertEqual((data['name'], data['colors']['accent']), ('Demo OS', '#123456'))
             self.assertEqual((data['theme'], data['debian']), ('warm-pastel', 'stable'))
+            self.assertEqual(data['bootloader-name'], 'Demo')
             self.assertEqual(data['slides'][0]['title'], 'Welcome to Demo OS')
 
     def test_debian_base_detection(self):

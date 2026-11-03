@@ -37,7 +37,7 @@ repository: `install-profile.sh --distro-dir /path/to/profile`.
 | Field | Meaning |
 | --- | --- |
 | `name`, `short-name` | Product name in the installer and the window title |
-| `bootloader-name` | First word of the GRUB menu entry (GRUB adds " GNU/Linux"). Its first word, lowercased, is also GRUB's EFI directory (`EFI/debion`), as Debian's GRUB upgrades expect |
+| `bootloader-name` | The GRUB menu entry (GRUB adds " GNU/Linux"). Its first word must be a plain ASCII word (letters, digits, `.` `_` `-`): lowercased, it is also GRUB's EFI directory (`EFI/debion`), as Debian's GRUB upgrades expect. `new-distro.py` sets it from the first word of the name |
 | `version` | Shown version; empty takes `VERSION_ID` from the live system's `/etc/os-release` |
 | `debian` | **Required.** The Debian base, `stable` or `testing`. The Init system and Boot loader pages offer only what this base's archive has |
 | `theme` | `soft-blue` or `warm-pastel` (see below); default `soft-blue` |

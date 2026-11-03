@@ -43,6 +43,9 @@ def main():
     text = (target / 'distro.yaml').read_text()
     old = re.search(r'^name: (.*)$', text, re.M).group(1)
     text = text.replace(old, args.name).replace(f'--distro {args.source}', f'--distro {args.id}')
+    # The boot menu name (and GRUB's EFI directory) come from its first word.
+    first = re.sub(r'[^A-Za-z0-9._-]', '', args.name.split()[0]) or args.id
+    text = re.sub(r'^bootloader-name: .*$', f'bootloader-name: {first}', text, flags=re.M)
     if args.theme:
         text = re.sub(r'^theme: .*$', f'theme: {args.theme}', text, flags=re.M)
     if args.debian:

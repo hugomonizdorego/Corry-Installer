@@ -162,7 +162,12 @@ def load(folder):
             raise BrandingError(f'distro.yaml needs "{key}"')
     notes = data.setdefault('notes', [])
     data.setdefault('short-name', data['name'])
-    data.setdefault('bootloader-name', data['name'])
+    data['bootloader-name'] = str(data.get('bootloader-name') or data['name'])
+    # Debian's GRUB names its EFI directory after the first word, lowercased, and
+    # upgrades only refresh that directory: it must be a plain ASCII word.
+    if not re.fullmatch(r'[A-Za-z0-9._-]+', data['bootloader-name'].split()[0] if data['bootloader-name'].split() else ''):
+        raise BrandingError('bootloader-name must start with a plain ASCII word (letters, digits, . _ -); '
+                            'it names the boot menu and GRUB\'s EFI directory: ' + data['bootloader-name'])
     if data.get('debian') not in BASES:
         raise BrandingError(f'distro.yaml needs "debian: stable" or "debian: testing" (the Debian base); '
                             f'found {data.get("debian")!r}')
@@ -262,8 +267,8 @@ def efi_directory(bootloader_name):
     derive it, so package upgrades refresh the copy Corry installed."""
     words = str(bootloader_name).split()
     first = words[0].lower() if words else 'debian'
-    first = {'kubuntu': 'ubuntu', 'devuan': 'debian'}.get(first, first)
-    return re.sub(r'[^a-z0-9._-]', '', first) or 'debian'
+    # load() accepts only plain ASCII words, so this is exactly what Debian derives.
+    return {'kubuntu': 'ubuntu', 'devuan': 'debian'}.get(first, first)
 
 
 def update_conf(path, change):
