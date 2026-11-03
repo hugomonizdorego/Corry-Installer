@@ -927,7 +927,12 @@ def prepare_bootloader(fw_type, install_hybrid_grub):
         libcalamares.utils.debug("Skipping bootloader installation since no bootloader was selected")
         return None
 
-    efi_directory = libcalamares.globalstorage.value("efiSystemPartition")
+    # Corry: the partition module always sets efiSystemPartition, also on BIOS
+    # computers. Since the hybrid GRUB change, run_grub_install() refuses the
+    # BIOS install when it gets an EFI directory, so a BIOS installation was
+    # left without a boot loader. Only UEFI (or hybrid) installs pass it on.
+    efi_directory = libcalamares.globalstorage.value("efiSystemPartition") \
+        if fw_type == "efi" or install_hybrid_grub else None
 
     if efi_boot_loader == "clr-boot-manager":
         if fw_type != "efi":

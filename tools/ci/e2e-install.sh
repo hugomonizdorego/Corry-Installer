@@ -210,9 +210,9 @@ for module in $(python3 -c 'import sys, yaml; print(" ".join(yaml.safe_load(open
    echo "--- /etc/default/grub"; grep -E "^GRUB_" "$t/etc/default/grub" 2>/dev/null || true
    echo "--- EFI partition"; find "$t/boot/efi" -maxdepth 4 2>/dev/null | head -40 || true
    for f in "$t"/boot/efi/EFI/*/grub.cfg; do [[ -f $f ]] && { echo "--- $f"; cat "$f"; }; done
-   [[ ! -d $t/boot/efi/loader ]] || { echo "--- systemd-boot"; cat "$t/boot/efi/loader/loader.conf"; cat "$t"/boot/efi/loader/entries/*.conf; }
+   [[ ! -d $t/boot/efi/loader ]] || { echo "--- systemd-boot"; cat "$t/boot/efi/loader/loader.conf" "$t"/boot/efi/loader/entries/*.conf || true; }
    for m in bootloader corrybootloader corrygrub grubcfg; do
-    [[ -f $work/job-$m.log ]] && { echo "--- job-$m.log (warnings)"; grep -E "WARNING|ERROR|grub-install|Installing for|No error" "$work/job-$m.log" | tail -n 15; }
+    [[ -f $work/job-$m.log ]] && { echo "--- job-$m.log (warnings)"; grep -E "WARNING|ERROR|grub-install|Installing for|No error" "$work/job-$m.log" | tail -n 15 || true; }
    done
    run umount;;
   *) run "$module";;

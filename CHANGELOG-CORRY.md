@@ -50,6 +50,10 @@ The first stable release, for Edukasaun OS (Debian stable) and DebION GNU/Linux
   installed without a time limit, so dpkg is never killed half-way.
 - A **reused EFI partition** keeps other systems' `EFI/…` directories and boot
   entries; only an EFI partition formatted by this installation is cleaned.
+- **BIOS installations get GRUB again.** Since the upstream hybrid-GRUB change,
+  the bootloader job skipped `grub-install` on BIOS whenever an EFI directory was
+  known, and the partition module always sets one: BIOS computers were left
+  without a boot loader. Found by the new end-to-end test.
 - An unexpected error in `corryinit`, `corrybootloader`, `corryupdate` or
   `corrycleanup` becomes a warning; the system keeps systemd or GRUB.
 - `corrycleanup` marks the system's own tools (cryptsetup, lvm2, GRUB, sudo…)

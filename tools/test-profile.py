@@ -1313,6 +1313,27 @@ class BootLoaderTests(unittest.TestCase):
         versions = ['6.1.0-25-amd64', '6.12.0-1-amd64', '6.9.7+bpo-amd64']
         self.assertEqual(sorted(versions, key=module.version_key), ['6.1.0-25-amd64', '6.9.7+bpo-amd64', '6.12.0-1-amd64'])
 
+    def test_bios_install_gets_grub_in_the_mbr(self):
+        # The partition module always sets efiSystemPartition, also on BIOS. The
+        # bootloader module must still run grub-install --target=i386-pc for the
+        # disk (found by the e2e test: a BIOS installation had no boot loader).
+        calls = []
+        values = {'firmwareType': 'bios', 'efiSystemPartition': '/boot/efi', 'rootMountPoint': '/tmp/target',
+                  'bootLoader': {'installPath': '/dev/sda'},
+                  'partitions': [{'device': '/dev/sda1', 'fs': 'ext4', 'mountPoint': '/', 'uuid': 'root-uuid'}],
+                  'branding': {'bootloaderEntryName': 'Edukasaun'}}
+        configuration = yaml.safe_load((PROFILE / 'modules/bootloader.conf').read_text())
+        fake = fake_calamares(values, configuration, lambda args, *rest: calls.append(list(args)) or 0)
+        module = load_module('bootloader', fake)
+        module.check_target_env_call = lambda args, *rest: calls.append(list(args)) or 0
+        with patch.object(module, 'run_grub_mkconfig', lambda *args: None):
+            module.prepare_bootloader('bios', False)
+        installs = [c for c in calls if c and c[0].endswith('grub-install')]
+        self.assertEqual(len(installs), 1, calls)
+        self.assertIn('--target=i386-pc', installs[0])
+        self.assertEqual(installs[0][-1], '/dev/sda')
+        self.assertFalse(any('Cannot install BIOS bootloader' in w for w in fake.log.warnings), fake.log.warnings)
+
     def test_grub_modules_step_aside_for_another_loader(self):
         for name in ['grubcfg', 'bootloader']:
             fake = fake_calamares({'corrySystem': {'bootloader': {'id': 'refind'}}, 'firmwareType': 'efi',

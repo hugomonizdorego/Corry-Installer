@@ -15,6 +15,8 @@ corry (1.0) unstable; urgency=medium
     nothing that can be avoided stops the installation.
   * The installation log is saved to /tmp/Corry (install.log, crash and
     preflight logs), owned by the desktop user, with an "Open log" button.
+  * BIOS installations get GRUB in the MBR again (the bootloader job
+    skipped it whenever an EFI directory was known, which is always).
   * Fixes: encrypted root unlock (crypttab), GRUB's EFI directory follows
     the distribution name, Secure Boot fallback path, 32-bit UEFI, the Qt
     SVG plugin, manual LVM/LUKS partitioning, GParted rescans, desktop
